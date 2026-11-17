@@ -12,11 +12,11 @@ From lerd's dashboard, **Plugins** › **Browse**, or:
 lerd plugin install https://github.com/ExeQue/lerd-laravel-inspect
 ```
 
-It needs lerd 1.39 or newer, `python3` on the host, and a Laravel 11+ app. The optional `laravel_inspect:` settings in `.lerd.yaml` are read with PyYAML; without it they are ignored and only the default disk, cache store and queues show.
+It needs lerd 1.40 or newer, `python3` on the host, and a Laravel 11+ app. The optional `laravel_inspect:` settings in `.lerd.yaml` are read with PyYAML; without it they are ignored and only the default disk, cache store and queues show.
 
 ## What it adds to lerd
 
-- **A site tab**, **Laravel**, on sites that use a database (lerd can limit a plugin tab that way, not by framework). Its sections sit in a grouped sidebar: Overview; HTTP (routes, middleware, policies, channels); Data (models, database, migrations); Code (views, commands, events, listeners, bindings, schedule, config); Runtime (queues, failed jobs, cache, storage). On a site that is not a Laravel app it says so.
+- **A site tab**, **Laravel**, on Laravel 11+ sites. Its sections sit in a grouped sidebar: Overview; HTTP (routes, middleware, policies, channels); Data (models, database, migrations); Code (views, commands, events, listeners, bindings, schedule, config); Runtime (queues, failed jobs, cache, storage). If a site's Laravel app cannot be inspected, such as before `composer install`, it says so.
 - **MCP tools** for AI assistants, `laravel-inspect_overview`, `_routes`, `_models` and the rest, all read-only, and a skill (`SKILL.md`) that tells an assistant which tool answers which question. lerd writes the skill with `lerd mcp:inject` or `lerd mcp:enable-global`.
 - **CLI commands**, `lerd laravel-inspect:routes` and the rest, run inside a linked project.
 - **API endpoints** under `/api/plugins/laravel-inspect/`, loopback only, which the tab uses.

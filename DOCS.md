@@ -6,7 +6,7 @@ It works on Laravel 11 and newer.
 
 ## The Laravel tab
 
-Sites that use a database get a **Laravel** tab: lerd can limit a plugin tab that way, not by framework, so a Laravel app lerd sees no database for gets none, and a site with a database that is not a Laravel app gets one that says so instead of failing.
+Laravel 11 and newer sites get a **Laravel** tab, each worktree judged on its own checkout. If the app cannot be inspected, such as before `composer install`, the tab says so instead of failing.
 
 Its sections sit in a sidebar, grouped, each with its count:
 

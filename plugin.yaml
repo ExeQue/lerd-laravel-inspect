@@ -1,6 +1,6 @@
 api_version: 1
 name: laravel-inspect
-lerd: ">=1.39"
+lerd: ">=1.40"
 version: 0.1.0
 description: See inside a Laravel app - routes, middleware, models, policies, views, commands, config, bindings, queues, events, storage and cache - on its own tab and for AI agents
 docs: DOCS.md
@@ -159,6 +159,5 @@ api:
   - {path: editor, methods: [GET], run: bin/editor, loopback_only: true}
 
 ui:
-  # Only on sites that use a database, which hides it on JS apps and static sites; lerd has no
-  # condition for a framework, and the tab still says calmly when a site is not a Laravel app.
-  site_tab: {title: Laravel, entry: ui/site.html, when: database}
+  # Only on Laravel 11 and newer, which the inspector needs (model:show, Schema::getTables()).
+  site_tab: {title: Laravel, entry: ui/site.html, when: "framework:laravel@>=11"}

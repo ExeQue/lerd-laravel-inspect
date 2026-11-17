@@ -11,6 +11,18 @@ define('INSPECT_LIBRARY', true);
 require __DIR__ . '/inspect.php';
 
 $checks = 0;
+function locateOrError(string $target): array
+{
+    $GLOBALS['batching'] = true;
+    try {
+        return locate($target);
+    } catch (RuntimeException $e) {
+        return ['error' => $e->getMessage()];
+    } finally {
+        $GLOBALS['batching'] = false;
+    }
+}
+
 function check(bool $ok, string $what): void
 {
     global $checks;
@@ -47,6 +59,9 @@ config(['li_selftest' => [
     'empty_secret' => '',
     'url' => 'redis://default:p4ssw0rd-in-url@lerd-redis:6379/0',
     'plain_url' => 'https://example.test/path',
+    'urls' => ['redis://u:p4ss-in-list@host', 'https://example.test'],
+    'webhook' => 'https://hooks.example.test/x?token=t0ken-in-query&mode=y',
+    'connection_string' => 'host=db;port=5432;password=dsn-p4ssword;dbname=app',
 ]]);
 $rows = array_column(configValues(['key' => 'li_selftest']), null, 'key');
 $json = json_encode($rows);
@@ -61,6 +76,11 @@ check($rows['li_selftest.plain']['value'] === 'hello', 'a plain value shows');
 check($rows['li_selftest.url']['masked'] && $rows['li_selftest.url']['value'] === 'redis://default:••••••@lerd-redis:6379/0', "a URL's password is masked, the rest shows");
 check(! str_contains($json, 'p4ssw0rd-in-url'), 'no URL password is in the output');
 check(! $rows['li_selftest.plain_url']['masked'], 'a URL without a password is not masked');
+check($rows['li_selftest.urls']['masked'] && ! str_contains($json, 'p4ss-in-list'), 'a password in a URL inside a list is masked');
+check($rows['li_selftest.webhook']['masked'] && str_contains($rows['li_selftest.webhook']['value'], 'mode=y') && ! str_contains($json, 't0ken-in-query'), 'a token in a query string is masked, the rest shows');
+check($rows['li_selftest.connection_string']['masked'] && ! str_contains($json, 'dsn-p4ssword') && str_contains($rows['li_selftest.connection_string']['value'], 'host=db'), 'a password in a DSN is masked, the rest shows');
+check(isset(locateOrError('Closure at .env:1')['error']), 'a closure place outside PHP files is not opened');
+check(isset(locateOrError('Closure at routes/web.php:1')['path']), 'a closure place in a PHP file of the project is opened');
 
 // Disks and stores show where data goes, never their keys.
 config(['filesystems.disks.li_selftest' => ['driver' => 's3', 'key' => 'AKIASELFTEST', 'secret' => 'shh-selftest', 'bucket' => 'b']]);

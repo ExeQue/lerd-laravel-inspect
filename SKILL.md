@@ -51,7 +51,7 @@ Every `filter` ignores case and takes several terms separated by `|`, matching a
 
 Deleting files, clearing a cache store, forgetting a key and clearing Laravel's caches exist only as buttons in the site's **Laravel** tab in lerd's dashboard, behind a confirmation, so the user decides. When one of those is the fix, tell the user what to clear and why. Clearing a Redis cache store runs FLUSHDB on its whole database, and `laravel-inspect_cache` says what else lives there.
 
-Disk, store and config credentials are never returned. By default the overview, Storage, Cache and Queues show only what the app uses or its defaults; a project lists more under `laravel_inspect: {disks: [...], cache_stores: [...], queues: [...]}` in `.lerd.yaml`.
+Config values, disks and cache stores come back with their credentials masked. What you read from a file (`storage-read`), a cache key (`cache-get`) or a job's exception (`failed-jobs`) comes back as it is, and can hold a secret: do not repeat one back to the user or into code. By default the overview, Storage, Cache and Queues show only what the app uses or its defaults; a project lists more under `laravel_inspect: {disks: [...], cache_stores: [...], queues: [...]}` in `.lerd.yaml`.
 
 ## Elsewhere in lerd
 

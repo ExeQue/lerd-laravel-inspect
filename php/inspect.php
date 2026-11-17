@@ -153,9 +153,9 @@ function locate(string $target): array
         return ['path' => $file, 'line' => 1];
     }
     if (preg_match('/^Closure at (.+):(\d+)$/', $target, $m)) {
-        // Only files of the project, which is where a closure's place points; lerd's adapter is not opened.
+        // Only PHP files of the project, which is where a closure's place points; lerd's adapter and .env are not opened.
         $path = realpath($m[1]);
-        if ($path === false || ! str_starts_with($path, getcwd() . '/')) {
+        if ($path === false || ! str_starts_with($path, getcwd() . '/') || ! str_ends_with($path, '.php')) {
             fail('No file in the project at ' . $m[1]);
         }
 
@@ -1110,12 +1110,19 @@ function configValues(array $args): array
             // A flag, a number or a class name named like a credential is not one, such as supports_credentials.
             $plain = is_bool($value) || is_int($value) || is_float($value) || (is_string($value) && str_contains($value, '\\') && class_exists($value));
             $masked = (! $plain && preg_match($secretKey, (string) $key)) || (is_string($value) && isset($secrets[$value]));
-            // A URL with a password in it, such as redis://user:pass@host, keeps all but the password.
-            if (! $masked && is_string($value) && preg_match('#^([a-z][a-z0-9+.-]*://[^:/@\s]*:)([^@\s]+)(@.*)$#i', $value, $url)) {
-                $rows[] = ['key' => $path, 'value' => $url[1] . '••••••' . $url[3], 'masked' => true];
-                continue;
-            }
             $shown = is_array($value) ? json_encode($value, JSON_UNESCAPED_SLASHES) : $value;
+            // A password inside a value keeps the rest readable: in a URL (redis://user:pass@host), a query
+            // string (?token=…) or a DSN (host=…;password=…), also within a list shown as JSON.
+            if (! $masked && is_string($shown)) {
+                $scrubbed = preg_replace([
+                    '#([a-z][a-z0-9+.-]*://[^:/@\s"]*:)[^@\s"]+(@)#i',
+                    '#((?:^|[?&;\s"])(?:password|passwd|pass|pwd|token|access_token|secret|api_key|key|signature|sig)=)[^&;\s"]+#i',
+                ], ['$1••••••$2', '$1••••••'], $shown);
+                if ($scrubbed !== $shown) {
+                    $rows[] = ['key' => $path, 'value' => $scrubbed, 'masked' => true];
+                    continue;
+                }
+            }
             $rows[] = [
                 'key' => $path,
                 'value' => $masked && $value !== null && $value !== '' ? '••••••' : (is_object($shown) ? get_debug_type($shown) : $shown),

@@ -80,7 +80,7 @@ Deleting files and clearing caches are deliberately not tools: they stay buttons
 
 ## Credentials
 
-The config is shown with credentials masked: a key whose last part ends in `key`, `secret`, `password`, `token`, `dsn` and the like, the password in a URL such as `redis://user:pass@host`, and any value equal to a secret environment variable, such as one the project's `env_provider` supplies. Disks and cache stores show only where data goes (driver, root, bucket, connection), never their keys. `php/selftest.php` checks this; run it from a Laravel app's folder with `lerd php ~/.local/share/lerd/plugins/laravel-inspect/php/selftest.php`.
+The config is shown with credentials masked: a key whose last part ends in `key`, `secret`, `password`, `token`, `dsn` and the like, a password in a URL such as `redis://user:pass@host`, in a query string or in a DSN, and any value equal to a secret environment variable, such as one the project's `env_provider` supplies. It is a pattern match, so a secret under an unusual name in an unusual form can still show. Disks and cache stores show only where data goes (driver, root, bucket, connection), never their keys. `php/selftest.php` checks this; run it from a Laravel app's folder with `lerd php ~/.local/share/lerd/plugins/laravel-inspect/php/selftest.php`.
 
 ## Speed
 

@@ -99,14 +99,25 @@ function fail(string $message): never
     exit(1);
 }
 
-/** Several sections from one boot of the app: [[section, args], ...] in, [{ok: data} or {error: why}, ...] out. */
+/**
+ * Several sections from one boot of the app: [[section, args], ...] in, [{ok: data} or {error: why}, ...] out.
+ * Only sections that read: deleting and clearing stay behind their own endpoints and the dashboard's confirmation.
+ */
+const BATCHABLE = ['overview', 'routes', 'models', 'model_references', 'db_tables', 'db_table', 'migrations', 'schedule',
+    'events', 'listeners', 'views', 'commands', 'config', 'policies', 'bindings', 'queues', 'channels', 'middleware',
+    'failed_jobs', 'cache'];
+
 function batch(array $args): array
 {
     $GLOBALS['batching'] = true;
     $results = [];
-    foreach ($args['items'] ?? [] as [$section, $sectionArgs]) {
+    foreach ((array) ($args['items'] ?? []) as $item) {
+        [$section, $sectionArgs] = array_pad((array) $item, 2, []);
         try {
-            $function = $GLOBALS['sections'][$section] ?? throw new RuntimeException('Unknown section: ' . $section);
+            if (! in_array($section, BATCHABLE, true)) {
+                throw new RuntimeException('Not a section a batch may run: ' . $section);
+            }
+            $function = $GLOBALS['sections'][$section];
             $results[] = ['ok' => $function((array) $sectionArgs)];
         } catch (Throwable $e) {
             $results[] = ['error' => $e->getMessage()];
@@ -142,7 +153,11 @@ function locate(string $target): array
         return ['path' => $file, 'line' => 1];
     }
     if (preg_match('/^Closure at (.+):(\d+)$/', $target, $m)) {
-        $path = realpath($m[1]) ?: fail('No file ' . $m[1]);
+        // Only files of the project, which is where a closure's place points; lerd's adapter is not opened.
+        $path = realpath($m[1]);
+        if ($path === false || ! str_starts_with($path, getcwd() . '/')) {
+            fail('No file in the project at ' . $m[1]);
+        }
 
         return ['path' => $path, 'line' => (int) $m[2]];
     }
@@ -1095,6 +1110,11 @@ function configValues(array $args): array
             // A flag, a number or a class name named like a credential is not one, such as supports_credentials.
             $plain = is_bool($value) || is_int($value) || is_float($value) || (is_string($value) && str_contains($value, '\\') && class_exists($value));
             $masked = (! $plain && preg_match($secretKey, (string) $key)) || (is_string($value) && isset($secrets[$value]));
+            // A URL with a password in it, such as redis://user:pass@host, keeps all but the password.
+            if (! $masked && is_string($value) && preg_match('#^([a-z][a-z0-9+.-]*://[^:/@\s]*:)([^@\s]+)(@.*)$#i', $value, $url)) {
+                $rows[] = ['key' => $path, 'value' => $url[1] . '••••••' . $url[3], 'masked' => true];
+                continue;
+            }
             $shown = is_array($value) ? json_encode($value, JSON_UNESCAPED_SLASHES) : $value;
             $rows[] = [
                 'key' => $path,

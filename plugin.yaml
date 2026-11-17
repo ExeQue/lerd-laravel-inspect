@@ -124,7 +124,7 @@ mcp:
       input_schema: {type: object, required: [site], properties: {site: {type: string}, limit: {type: integer}}}
       run: bin/failed-jobs
 
-# Every endpoint boots the app, so none is reachable from the LAN.
+# Every endpoint is loopback only: most boot the app, and the rest call lerd's API with the plugin's token.
 api:
   - {path: overview, methods: [GET], run: bin/overview, loopback_only: true}
   - {path: routes, methods: [GET], run: bin/routes, loopback_only: true}
@@ -156,7 +156,7 @@ api:
   - {path: cache-forget, methods: [POST], run: bin/cache-forget, loopback_only: true}
   - {path: cache-clear, methods: [POST], run: bin/cache-clear, loopback_only: true}
   - {path: framework-clear, methods: [POST], run: bin/framework-clear, loopback_only: true}
-  - {path: editor, methods: [GET], run: bin/editor}
+  - {path: editor, methods: [GET], run: bin/editor, loopback_only: true}
 
 ui:
   # Only on sites that use a database, which hides it on JS apps and static sites; lerd has no

@@ -30,7 +30,7 @@ Its sections sit in a sidebar, grouped, each with its count:
 - **Runtime**
   - **Queues**: jobs waiting on the queues the app uses: pending, delayed, reserved and total.
   - **Failed jobs**: the latest, with job class, queue and exception.
-  - **Cache**: the project's cache stores with how much each holds, **Clear** for each after confirming; looking up a key, and **Forget** for it; and Laravel's config, route, event and view caches, with **Clear** for each.
+  - **Cache**: the project's cache stores with how much each holds, **Clear** for each after confirming; looking up a key, and **Forget** for it; and Laravel's config, route, event and view caches, with **Clear** for each after confirming.
   - **Storage**: the project's disks. Browse one a folder at a time, 500 entries a page with **Load more**; the filter searches the whole folder on the server (any part of the name on a local disk, the start of it on S3). Click a file for a preview, with **Open in viewer** for text. **Delete** removes a file after confirming. The keyboard works it too: ↑ and ↓ (or k and j) move, Enter or → opens, Backspace or ← goes up a folder and selects the one you left, Delete deletes, / jumps to the filter and Esc back to the list.
 
 The tab loads every section at once when it opens, so moving between them is instant; **Reload** fetches the current one again, with a skeleton while it loads. The browser's Back and Forward step through it. Below 800px the sidebar becomes a select.
@@ -80,7 +80,7 @@ Deleting files and clearing caches are deliberately not tools: they stay buttons
 
 ## Credentials
 
-The config is shown with credentials masked: a key whose last part ends in `key`, `secret`, `password`, `token`, `dsn` and the like, and any value equal to a secret environment variable, such as one the project's `env_provider` supplies. Disks and cache stores show only where data goes (driver, root, bucket, connection), never their keys. `php/selftest.php` checks this.
+The config is shown with credentials masked: a key whose last part ends in `key`, `secret`, `password`, `token`, `dsn` and the like, the password in a URL such as `redis://user:pass@host`, and any value equal to a secret environment variable, such as one the project's `env_provider` supplies. Disks and cache stores show only where data goes (driver, root, bucket, connection), never their keys. `php/selftest.php` checks this.
 
 ## Speed
 

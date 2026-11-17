@@ -45,6 +45,8 @@ config(['li_selftest' => [
     'aliases' => ['Password' => Illuminate\Support\Facades\Password::class],
     'plain' => 'hello',
     'empty_secret' => '',
+    'url' => 'redis://default:p4ssw0rd-in-url@lerd-redis:6379/0',
+    'plain_url' => 'https://example.test/path',
 ]]);
 $rows = array_column(configValues(['key' => 'li_selftest']), null, 'key');
 $json = json_encode($rows);
@@ -56,6 +58,9 @@ check(! $rows['li_selftest.foreign_key_constraints']['masked'], 'foreign_key_con
 check(! $rows['li_selftest.supports_credentials']['masked'], 'a flag is not masked');
 check(! $rows['li_selftest.aliases.Password']['masked'], 'a class name is not masked');
 check($rows['li_selftest.plain']['value'] === 'hello', 'a plain value shows');
+check($rows['li_selftest.url']['masked'] && $rows['li_selftest.url']['value'] === 'redis://default:••••••@lerd-redis:6379/0', "a URL's password is masked, the rest shows");
+check(! str_contains($json, 'p4ssw0rd-in-url'), 'no URL password is in the output');
+check(! $rows['li_selftest.plain_url']['masked'], 'a URL without a password is not masked');
 
 // Disks and stores show where data goes, never their keys.
 config(['filesystems.disks.li_selftest' => ['driver' => 's3', 'key' => 'AKIASELFTEST', 'secret' => 'shh-selftest', 'bucket' => 'b']]);

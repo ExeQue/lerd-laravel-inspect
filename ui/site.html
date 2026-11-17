@@ -9,10 +9,9 @@
     :root, :root.dark { color-scheme: normal; }
     /* Keep room for the scrollbar, so a tab that grows past the frame does not shift the layout. */
     html { scrollbar-gutter: stable; }
-    /* lerd's own scrollbar-autohide from the dashboard: thin, and only shown on hover. */
+    /* Like lerd's own scrollbar-autohide: thin, and only shown on hover, in lerd's line colour. */
     html, .wrap, .side { scrollbar-width: thin; scrollbar-color: transparent transparent; }
-    html:hover, .wrap:hover, .side:hover { scrollbar-color: #ccc transparent; }
-    :root.dark:hover, .dark .wrap:hover, .dark .side:hover { scrollbar-color: #333 transparent; }
+    html:hover, .wrap:hover, .side:hover { scrollbar-color: var(--lerd-line) transparent; }
     /* Sections down a grouped sidebar beside the content; it sticks while the content scrolls. Below 800px
        it gives way to a select above the content. */
     .layout { display: grid; grid-template-columns: 184px minmax(0, 1fr); gap: 20px; align-items: start; }
@@ -725,7 +724,11 @@
       const framework = data.framework.map((row) => ({
         cache: row.cache,
         state: row.cached ? pill('cached', 'ok') : pill('not cached'),
-        '': iconButton('Clear', async () => { await post('framework-clear', { cache: row.cache }); show('cache', true); })
+        '': iconButton('Clear', async () => {
+          if (!await confirmAction('Clear the ' + row.cache + ' cache?', 'Laravel builds it again from the app\'s files the next time it needs it.', 'Clear')) return;
+          await post('framework-clear', { cache: row.cache });
+          show('cache', true);
+        })
       }));
       return [
         label('Stores'), table(filtered(rows)), chosenNote('cache stores'),

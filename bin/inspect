@@ -209,7 +209,10 @@ def main():
     args = read_args()
     as_json = args.pop('json', False)
     if SECTION == 'batch':
-        print(json.dumps(run_batch(path, args.get('paths') or [])))
+        paths = args.get('paths')
+        if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+            sys.exit('batch takes {"paths": ["routes?", ...]}')
+        print(json.dumps(run_batch(path, paths)))
         return
     output = run_php(path, 'locate' if SECTION == 'open' else SECTION, args)
 

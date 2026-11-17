@@ -6,11 +6,11 @@ It works on Laravel 11 and newer.
 
 ## The Laravel tab
 
-Sites that use a database get a **Laravel** tab (lerd shows a plugin tab by such a condition; it has none for a framework). On a site that is not a Laravel app, the tab says so instead of failing.
+Sites that use a database get a **Laravel** tab: lerd can limit a plugin tab that way, not by framework, so a Laravel app lerd sees no database for gets none, and a site with a database that is not a Laravel app gets one that says so instead of failing.
 
 Its sections sit in a sidebar, grouped, each with its count:
 
-- **Overview**: counts that open their section, and `artisan about` (versions, drivers, caches, storage links, packages).
+- **Overview**: counts that open their section, and `artisan about` (environment, caches, drivers, storage links, and the sections packages such as Sentry add).
 - **HTTP**
   - **Routes**: method, URI, name, action and middleware.
   - **Middleware**: the global stack, the groups (pick one under **Group**) and the aliases, filterable by kind.
@@ -65,7 +65,7 @@ Run inside a linked project. Add `--json` for raw JSON.
 - `lerd laravel-inspect:config [filter] [--key=mail]`
 - `lerd laravel-inspect:queues [filter]`
 - `lerd laravel-inspect:failed-jobs [limit]`
-- `lerd laravel-inspect:storage-list <disk> [path]`
+- `lerd laravel-inspect:storage-list <disk> [path] [--search=name] [--cursor=next]`
 - `lerd laravel-inspect:storage-read <disk> <path>`
 - `lerd laravel-inspect:cache-get <store> <key>`
 - `lerd laravel-inspect:open <Class[@method]>` opens it in lerd's editor
@@ -80,7 +80,7 @@ Deleting files and clearing caches are deliberately not tools: they stay buttons
 
 ## Credentials
 
-The config is shown with credentials masked: a key whose last part ends in `key`, `secret`, `password`, `token`, `dsn` and the like, the password in a URL such as `redis://user:pass@host`, and any value equal to a secret environment variable, such as one the project's `env_provider` supplies. Disks and cache stores show only where data goes (driver, root, bucket, connection), never their keys. `php/selftest.php` checks this.
+The config is shown with credentials masked: a key whose last part ends in `key`, `secret`, `password`, `token`, `dsn` and the like, the password in a URL such as `redis://user:pass@host`, and any value equal to a secret environment variable, such as one the project's `env_provider` supplies. Disks and cache stores show only where data goes (driver, root, bucket, connection), never their keys. `php/selftest.php` checks this; run it from a Laravel app's folder with `lerd php ~/.local/share/lerd/plugins/laravel-inspect/php/selftest.php`.
 
 ## Speed
 
@@ -106,4 +106,4 @@ laravel_inspect:
   queues: [health, redis:ingest]
 ```
 
-Reading these needs PyYAML (`python3 -c "import yaml"`); without it every disk and store shows.
+Reading these needs PyYAML (`python3 -c "import yaml"`); without it they are ignored and only the defaults show.

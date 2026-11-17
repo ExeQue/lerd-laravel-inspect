@@ -5,7 +5,7 @@ version: 0.1.0
 description: See inside a Laravel app - routes, middleware, models, policies, views, commands, config, bindings, queues, events, storage and cache - on its own tab and for AI agents
 docs: DOCS.md
 icon: ui/icon.svg
-screenshots: [screenshots/overview.png, screenshots/routes.png, screenshots/model.png, screenshots/config.png]
+screenshots: [screenshots/overview.png, screenshots/routes.png, screenshots/model.png, screenshots/config.png, screenshots/storage.png, screenshots/cache.png]
 requires: [python3]
 
 commands:

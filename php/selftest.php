@@ -67,4 +67,11 @@ config(['filesystems.disks.li_selftest' => ['driver' => 's3', 'key' => 'AKIASELF
 $disk = array_column(configured('filesystems.disks', 'filesystems.default', null), null, 'name')['li_selftest'];
 check(! isset($disk['key']) && ! isset($disk['secret']) && $disk['bucket'] === 'b', "a disk's key and secret are left out");
 
+// A batch runs the sections that read, and refuses the ones that delete or clear.
+$GLOBALS['sections'] = $sections;
+$batch = batch(['items' => [['routes', []], ['storage_delete', ['disk' => 'local', 'path' => 'x']], ['cache_clear', ['store' => 'array']]]]);
+check(isset($batch[0]['ok']) && is_array($batch[0]['ok']), 'a batch runs a section that reads');
+check(isset($batch[1]['error'], $batch[2]['error']), 'a batch refuses deleting and clearing');
+$GLOBALS['batching'] = false;
+
 echo "ok, $checks checks\n";

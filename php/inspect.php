@@ -103,18 +103,18 @@ function fail(string $message): never
  * Several sections from one boot of the app: [[section, args], ...] in, [{ok: data} or {error: why}, ...] out.
  * Only sections that read: deleting and clearing stay behind their own endpoints and the dashboard's confirmation.
  */
-const BATCHABLE = ['overview', 'routes', 'models', 'model_references', 'db_tables', 'db_table', 'migrations', 'schedule',
-    'events', 'listeners', 'views', 'commands', 'config', 'policies', 'bindings', 'queues', 'channels', 'middleware',
-    'failed_jobs', 'cache'];
-
 function batch(array $args): array
 {
+    // A list in the function, not a const: a const at the bottom of this file is not defined yet when a section runs.
+    $batchable = ['overview', 'routes', 'models', 'model_references', 'db_tables', 'db_table', 'migrations', 'schedule',
+        'events', 'listeners', 'views', 'commands', 'config', 'policies', 'bindings', 'queues', 'channels', 'middleware',
+        'failed_jobs', 'cache'];
     $GLOBALS['batching'] = true;
     $results = [];
     foreach ((array) ($args['items'] ?? []) as $item) {
         [$section, $sectionArgs] = array_pad((array) $item, 2, []);
         try {
-            if (! in_array($section, BATCHABLE, true)) {
+            if (! in_array($section, $batchable, true)) {
                 throw new RuntimeException('Not a section a batch may run: ' . $section);
             }
             $function = $GLOBALS['sections'][$section];

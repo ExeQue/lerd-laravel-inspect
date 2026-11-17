@@ -1,0 +1,1183 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Laravel</title>
+  <style>
+    /* The dashboard runs with color-scheme normal, and a frame whose scheme differs gets an opaque canvas
+       instead of a transparent one, a shade off lerd's background. Matching it keeps the frame see-through. */
+    :root, :root.dark { color-scheme: normal; }
+    /* Keep room for the scrollbar, so a tab that grows past the frame does not shift the layout. */
+    html { scrollbar-gutter: stable; }
+    /* lerd's own scrollbar-autohide from the dashboard: thin, and only shown on hover. */
+    html, .wrap, .side { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+    html:hover, .wrap:hover, .side:hover { scrollbar-color: #ccc transparent; }
+    :root.dark:hover, .dark .wrap:hover, .dark .side:hover { scrollbar-color: #333 transparent; }
+    /* Sections down a grouped sidebar beside the content; it sticks while the content scrolls. Below 800px
+       it gives way to a select above the content. */
+    .layout { display: grid; grid-template-columns: 184px minmax(0, 1fr); gap: 20px; align-items: start; }
+    .side { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+    .side .lerd-label { margin: 14px 8px 4px; }
+    .side .lerd-label:first-child { margin-top: 0; }
+    .side button { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; text-align: left;
+      border-color: transparent; background: transparent; }
+    .side button:hover { background: var(--lerd-surface-hover); }
+    .side button[aria-selected="true"] { background: var(--lerd-accent); border-color: var(--lerd-accent); color: var(--lerd-on-accent); }
+    .side button[aria-selected="true"] .n { color: inherit; }
+    .side .n { font-size: 11px; }
+    .side .n:empty { display: none; }
+    #section-select { display: none; width: 100%; }
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: minmax(0, 1fr); }
+      .side { display: none; }
+      #section-select { display: block; }
+    }
+    .main > .lerd-toolbar:first-child { margin-top: 0; }
+    body { margin: 0; padding: 12px 16px 32px; }
+    .lerd-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+    .lerd-toolbar input[type=search] { flex: 1; min-width: 200px; }
+    /* An empty status still takes the toolbar's gap and pushes Reload in from the edge. */
+    #status:empty { display: none; }
+    .note { margin: 8px 2px 0; font-size: 12px; }
+    .keys { margin-left: auto; font-size: 11px; }
+    tbody tr.selected:focus { outline: none; }
+    /* Config tree: branches fold, each level indented; leaves show the value at the right. */
+    .tree { padding: 6px 0; }
+    .tree summary { display: flex; gap: 8px; align-items: baseline; padding: 3px 16px; list-style: none; }
+    .tree summary::-webkit-details-marker { display: none; }
+    .tree summary::before { content: '▸'; width: 10px; color: var(--lerd-text-muted); transition: transform 0.15s; }
+    .tree details[open] > summary::before { transform: rotate(90deg); }
+    .tree .leaf { padding-left: 34px; }
+    .tree .branch { padding-left: 18px; border-left: 1px solid var(--lerd-line); margin-left: 22px; }
+    .tree .leaf { display: flex; justify-content: space-between; gap: 16px; padding: 3px 16px; }
+    .tree .leaf .value { text-align: right; overflow-wrap: anywhere; }
+    .tree .leaf:hover, .tree summary:hover { background: var(--lerd-surface-hover); }
+    /* App, Vendor and All as one segmented control; the chosen one is pressed. */
+    .seg { display: inline-flex; }
+    .seg button { border-radius: 0; margin-left: -1px; }
+    .seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+    .seg button:last-child { border-radius: 0 6px 6px 0; }
+    /* The chosen one in the accent, like lerd's primary buttons, so it reads at a glance. */
+    .seg button[aria-pressed="true"] { position: relative; z-index: 1; background: var(--lerd-accent); border-color: var(--lerd-accent); color: var(--lerd-on-accent); }
+    .wrap { overflow-x: auto; }
+    table { width: 100%; }
+    th, td { vertical-align: top; white-space: nowrap; }
+    /* Columns that only hold a pill, a number or a short word take what they need and no more. */
+    .fit { width: 1%; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    /* Columns of prose or lists wrap, and stop growing at a width that still reads. */
+    .prose { white-space: normal; overflow-wrap: anywhere; min-width: 180px; max-width: 420px; }
+    /* Long identifiers such as a URI or a route name break where they must, without a minimum. */
+    /* Breaks only where breakable() marks it, after . / and -, never mid-word. */
+    .wrap { white-space: normal; }
+    /* An exception shows its first three lines; the whole of it is on hover. */
+    .clamp > span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    textarea { width: 100%; min-height: 70px; box-sizing: border-box; }
+    .lerd-label { display: block; margin: 20px 0 8px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); gap: 12px; }
+    .stat { padding: 14px 16px; }
+    .stat b { display: block; font-size: 26px; line-height: 1.2; }
+    .stat { cursor: pointer; }
+    .stat:hover { background: var(--lerd-surface-hover); }
+    /* Columns, not a grid, so a short card packs under the one above instead of leaving a gap beside a long one. */
+    .facts { columns: 320px; column-gap: 12px; }
+    /* Padding, not margin: a column drops the margin at its top, so the first column would sit lower. */
+    .facts > div { break-inside: avoid; padding: 12px 0 4px; }
+    .facts > div > .lerd-label:first-child { margin-top: 0; }
+    .facts .lerd-card { padding: 4px 0; }
+    .fact { display: flex; justify-content: space-between; gap: 16px; padding: 6px 16px; }
+    .fact span:first-child { white-space: nowrap; }
+    .fact span:last-child { text-align: right; overflow-wrap: anywhere; }
+    .head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 8px; }
+    .head h2 { margin: 0; font-size: 18px; }
+    .code { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .code .words { white-space: normal; }
+    /* Fixed sizes: in a table wider than the frame, flex would otherwise shrink the buttons and their icons to nothing. */
+    .code .icon { flex: none; height: 18px; min-width: 0; padding: 0 3px; opacity: 0.6; }
+    .code .icon svg { flex: none; width: 12px; height: 12px; }
+    .code .icon:hover { opacity: 1; }
+    .pills { display: inline-flex; gap: 4px; white-space: nowrap; }
+    dialog.file { width: min(900px, calc(100vw - 32px)); }
+    dialog.file .where { font-size: 11px; overflow-wrap: anywhere; margin-bottom: 8px; }
+    dialog.file h3 { margin-bottom: 2px; overflow-wrap: anywhere; }
+    dialog.file img { display: block; max-height: 60vh; margin: 0 auto 12px; }
+    dialog.file .preview { max-height: 60vh; overflow: auto; margin: 0 0 12px; white-space: pre-wrap; }
+    /* Skeleton bars in lerd's own hover shade, with a slow shimmer; the whole skeleton fades in late. */
+    .sk { display: inline-block; height: 10px; border-radius: 4px; vertical-align: middle;
+      background: linear-gradient(90deg, var(--lerd-surface-hover) 0%, color-mix(in srgb, var(--lerd-surface-hover), var(--lerd-text) 8%) 50%, var(--lerd-surface-hover) 100%);
+      background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite; }
+    .sk-small { height: 8px; }
+    .sk-big { height: 22px; margin: 4px 0 6px; }
+    .sk-button { height: 28px; }
+    .sk-label { display: block; margin: 20px 0 10px; }
+    .sk-half { width: 40%; }
+    .sk-card { padding: 4px 0; }
+    .sk-row { display: flex; gap: 32px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--lerd-line); }
+    .sk-row:last-child { border-bottom: 0; }
+    .sk-row > .sk { flex: 1; max-width: 22%; }
+    .sk-row > .sk:first-child { max-width: 30%; }
+    .sk-head { padding: 10px 16px; }
+    .stat .sk { display: block; }
+    .sk-wrap, .stat b:has(.sk) { opacity: 0; animation: appear 0.2s ease 0.2s forwards; }
+    @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+    @keyframes appear { to { opacity: 1; } }
+    .loading { display: flex; justify-content: center; padding: 48px 0; }
+    /* lerd ships no spinner; this one is drawn in its own line and accent colours. */
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--lerd-line); border-top-color: var(--lerd-accent);
+      border-radius: 50%; animation: spin 0.7s linear infinite; }
+    .loading .spinner { width: 22px; height: 22px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* lerd ships no popover, so this one borrows the colours of its dialogs. */
+    .tip { position: fixed; inset: auto; margin: 0; padding: 4px 8px; max-width: calc(100vw - 16px);
+      color: var(--lerd-text); background: var(--lerd-card); border: 1px solid var(--lerd-line); border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+  <nav class="side" id="tabs" role="tablist" aria-orientation="vertical"></nav>
+  <div class="main">
+    <select id="section-select" aria-label="Section"></select>
+    <div class="lerd-toolbar">
+      <input type="search" id="filter" placeholder="Filter, a|b for either" title="Several terms separated by | match any of them">
+      <span id="scope" class="seg" hidden></span>
+      <button id="reload">Reload</button>
+      <span id="status" class="lerd-muted"></span>
+    </div>
+    <div id="view"></div>
+  </div>
+  </div>
+
+  <script src="lerd.js"></script>
+  <script>
+    const site = encodeURIComponent(lerd.context.site);
+    const view = document.getElementById('view');
+    const filter = document.getElementById('filter');
+    const status = document.getElementById('status');
+    const tabs = {
+      overview: 'Overview', routes: 'Routes', middleware: 'Middleware', models: 'Models', policies: 'Policies', views: 'Views',
+      commands: 'Commands', config: 'Config', bindings: 'Bindings', 'db-tables': 'Database', storage: 'Storage', cache: 'Cache',
+      queues: 'Queues', migrations: 'Migrations', schedule: 'Schedule', events: 'Events', listeners: 'Listeners', channels: 'Channels',
+      'failed-jobs': 'Failed jobs'
+    };
+    let current = 'overview';
+    // Every filter takes a|b for either, except a search by S3 prefix, which takes one term.
+    const FILTER_HINT = 'Filter, a|b for either';
+    // The overview's data once it has loaded: the app's namespaces and its disks with their drivers.
+    let overview = null;
+    // The branches of the config tree that are open, kept while the tab is; #config/<file> opens that file.
+    const configOpen = new Set();
+    // Which kind of middleware the Middleware tab shows: all, global, group or alias.
+    let middlewareKind = 'all';
+    // Under Group, the one group shown; empty for all of them.
+    let middlewareGroup = '';
+    let render = () => {};
+
+    function el(tag, attrs = {}, ...children) {
+      const node = document.createElement(tag);
+      Object.assign(node, attrs);
+      node.append(...children);
+      return node;
+    }
+
+    const pill = (label, kind = '') => el('span', { className: 'lerd-pill ' + kind, textContent: label });
+    const muted = (label) => el('span', { className: 'lerd-muted', textContent: label });
+
+    function text(value) {
+      if (value === null || value === undefined) return '';
+      if (Array.isArray(value)) return value.map(text).join(', ');
+      if (typeof value === 'object') return JSON.stringify(value);
+      return String(value);
+    }
+
+    // Every GET is fetched once and kept until Reload, so switching tabs is instant.
+    const cache = new Map();
+    // App, Vendor or All is chosen per tab. A path asked for with own = true leaves vendor out, which is what the
+    // tab counts and the overview's tiles show, so they stay the app's own whatever a tab is set to.
+    const vendorOn = {};
+    const vendorParam = (tab) => (vendorOn[tab] ? '&vendor=1' : '');
+    const paths = {
+      overview: () => 'overview',
+      routes: (own) => 'routes?' + (own ? '' : vendorParam('routes')),
+      models: (own) => 'models?' + (own ? '' : vendorParam('models')),
+      'db-tables': () => 'db-tables?counts=1',
+      // The disks come with the overview; the stores with their own section.
+      storage: () => 'overview',
+      cache: () => 'cache',
+      migrations: () => 'migrations',
+      schedule: () => 'schedule',
+      events: (own) => 'events?' + (own ? '' : vendorParam('events')),
+      listeners: (own) => 'listeners?' + (own ? '' : vendorParam('listeners')),
+      views: (own) => 'views?' + (own ? '' : vendorParam('views')),
+      commands: (own) => 'commands?' + (own ? '' : vendorParam('commands')),
+      bindings: (own) => 'bindings?' + (own ? '' : vendorParam('bindings')),
+      middleware: (own) => 'middleware?' + (own ? '' : vendorParam('middleware')),
+      policies: (own) => 'policies?' + (own ? '' : vendorParam('policies')),
+      config: () => 'config',
+      queues: () => 'queues',
+      channels: () => 'channels',
+      'failed-jobs': () => 'failed-jobs'
+    };
+
+    function get(path, fresh = false) {
+      const url = path + (path.includes('?') ? '&' : '?') + 'site=' + site + (fresh ? '&fresh=1' : '');
+      if (fresh || !cache.has(path)) {
+        const request = lerd.api(url).then((body) => (typeof body === 'string' ? JSON.parse(body) : body));
+        request.catch(() => cache.delete(path));
+        cache.set(path, request);
+      }
+      return cache.get(path);
+    }
+
+    async function load(path, fresh) {
+      busy(true);
+      try {
+        return await get(path, fresh);
+      } catch (err) {
+        view.replaceChildren(el('div', { className: 'lerd-empty', textContent: err.message }));
+        throw err;
+      } finally {
+        busy(false);
+      }
+    }
+
+    // Reload waits while anything loads.
+    let pending = 0;
+    const reload = document.getElementById('reload');
+    function busy(on) {
+      pending = Math.max(0, pending + (on ? 1 : -1));
+      reload.disabled = pending > 0;
+    }
+
+    const spinner = () => el('div', { className: 'loading' }, el('span', { className: 'spinner', title: 'Loading' }));
+
+    // Skeletons: the page's shape in grey while it loads, so nothing jumps when the data lands. They fade
+    // in after 200ms, so an answer from the index never flashes one; Reload, which skips it, shows them.
+    const bar = (width, cls = '') => el('span', { className: 'sk ' + cls, style: 'width:' + width });
+    const WIDTHS = ['62%', '48%', '71%', '55%', '66%', '40%', '58%', '69%', '45%', '60%'];
+
+    function skeletonTable(rows = 8, columns = 4) {
+      const line = (i) => el('div', { className: 'sk-row' }, ...Array.from({ length: columns }, (_, c) => bar(c === 0 ? WIDTHS[i % WIDTHS.length] : (30 + ((i + c) * 17) % 40) + '%')));
+      return el('div', { className: 'lerd-card flush sk-card' },
+        el('div', { className: 'sk-row sk-head' }, ...Array.from({ length: columns }, () => bar('38%', 'sk-small'))),
+        ...Array.from({ length: rows }, (_, i) => line(i)));
+    }
+
+    function skeletonOverview() {
+      return el('div', { className: 'sk-wrap' },
+        el('div', { className: 'stats' }, ...Array.from({ length: 8 }, () => el('div', { className: 'lerd-card stat' }, bar('48px', 'sk-big'), bar('64%', 'sk-small')))),
+        el('div', { className: 'facts' }, ...[10, 4, 7, 2].map((n) => el('div', {}, bar('90px', 'sk-small sk-label'),
+          el('div', { className: 'lerd-card' }, ...Array.from({ length: n }, (_, i) => el('div', { className: 'fact' }, bar(WIDTHS[i] , 'sk-half'), bar('28%'))))))));
+    }
+
+    function skeletonTree() {
+      return el('div', { className: 'lerd-card tree sk-wrap' }, ...Array.from({ length: 14 }, (_, i) => el('div', { className: 'leaf' }, bar((60 + (i * 23) % 90) + 'px'), bar('18px', 'sk-small'))));
+    }
+
+    function skeletonDetail() {
+      return el('div', { className: 'sk-wrap' },
+        el('div', { className: 'head' }, bar('70px', 'sk-button'), bar('220px', 'sk-big'), bar('80px', 'sk-small')),
+        bar('80px', 'sk-small sk-label'), skeletonTable(8, 5),
+        bar('80px', 'sk-small sk-label'), skeletonTable(4, 3));
+    }
+
+    const skeletonFor = (tab) => (tab === 'overview' ? skeletonOverview()
+      : tab === 'config' ? skeletonTree()
+      : tab === 'policies' ? el('div', { className: 'sk-wrap' }, bar('80px', 'sk-small sk-label'), skeletonTable(8, 3), bar('60px', 'sk-small sk-label'), skeletonTable(2, 2))
+      : el('div', { className: 'sk-wrap' }, skeletonTable(10, 4)));
+
+    // A class (with an optional @method) or a closure's place, which opens in the editor picked in lerd.
+    const CODE = /^(\\?[A-Za-z_]\w*(\\\w+)+(@\w+)?|Closure at .+:\d+)$/;
+    // The app's own namespaces, from the overview; everything else is vendor's.
+    let namespaces = [];
+    const tip = el('div', { className: 'tip lerd-mono' });
+    tip.popover = 'manual';
+    document.body.append(tip);
+
+    function ownCode(target) {
+      return target.startsWith('Closure at ')
+        ? !/^Closure at (vendor\/|\/)/.test(target)
+        : namespaces.some((ns) => target.replace(/^\\/, '').startsWith(ns));
+    }
+
+    // An external-link icon, drawn in the text colour like lerd's own icons.
+    const OPEN_ICON = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
+
+    const COPY_ICON = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    const CHECK_ICON = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+    // The page is sandboxed, so the clipboard API may be refused; a selected textarea still copies.
+    async function copy(textToCopy) {
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+      } catch {
+        const area = el('textarea', { value: textToCopy });
+        document.body.append(area);
+        area.select();
+        document.execCommand('copy');
+        area.remove();
+      }
+    }
+
+    // A class or closure by its short name, the full one on hover, a button that copies the full name,
+    // and for the app's own code one that opens it.
+    function codeLink(target) {
+      // Inline only the file and line of a closure; the popover says it is one, with the whole path.
+      const short = target.startsWith('Closure at ')
+        ? target.split('/').pop()
+        : target.split('\\').pop();
+      const name = el('span', { textContent: short });
+      name.onmouseenter = () => {
+        tip.textContent = target;
+        tip.showPopover();
+        const r = name.getBoundingClientRect();
+        tip.style.left = Math.min(r.left, innerWidth - tip.offsetWidth - 8) + 'px';
+        tip.style.top = (r.bottom + 4) + 'px';
+      };
+      name.onmouseleave = () => tip.hidePopover();
+      // A closure copies as path:line, which editors and terminals open; a class as its full name.
+      const copied = target.replace(/^Closure at /, '');
+      if (!editor || !ownCode(target)) return el('span', { className: 'code' }, name, copyButton(copied));
+      return el('span', { className: 'code' }, name, copyButton(copied), openButton(target, short));
+    }
+
+    function copyButton(copied) {
+      const button = el('button', { className: 'icon', title: 'Copy ' + copied, innerHTML: COPY_ICON });
+      button.setAttribute('aria-label', 'Copy ' + copied);
+      button.onclick = async (e) => {
+        e.stopPropagation();
+        await copy(copied);
+        button.innerHTML = CHECK_ICON;
+        setTimeout(() => { button.innerHTML = COPY_ICON; }, 1200);
+      };
+      return button;
+    }
+
+    // Opens a class, a method, a closure's line or a project file in the editor picked in lerd.
+    function openButton(target, short) {
+      const button = el('button', { className: 'icon', title: 'Open in editor', innerHTML: OPEN_ICON });
+      button.setAttribute('aria-label', 'Open ' + short + ' in editor');
+      button.onclick = (e) => {
+        e.stopPropagation();
+        lerd.api('open?site=' + site, { method: 'POST', body: JSON.stringify({ target }) })
+          .catch((err) => { status.textContent = err.message; });
+      };
+      return button;
+    }
+
+    // A value to copy as it is, such as a view's name.
+    // Text that may wrap after . / and -, as a route name, a URI or a migration reads, and nowhere else.
+    const breakable = (value) => value.split(/(?<=[./_-])/).flatMap((part, i) => (i ? [el('wbr'), part] : [part]));
+
+    const copyable = (value, shown = value) => el('span', { className: 'code' }, el('span', { textContent: shown }), copyButton(value));
+
+    // A name with buttons to copy it and to open the file behind it, unless that file lives in vendor/.
+    const namedFile = (name, path) => el('span', { className: 'code' }, el('span', {}, ...breakable(name)), copyButton(name),
+      editor && !path.startsWith('vendor/') ? openButton(path, name) : '');
+
+    // A project file by its path, opening in the editor unless it lives in vendor/.
+    const fileLink = (path) => el('span', { className: 'code' }, muted(path), copyButton(path),
+      editor && !path.startsWith('vendor/') ? openButton(path, path.split('/').pop()) : '');
+
+    // One colour per flag, so a column of them reads at a glance.
+    const FLAG_COLORS = {
+      increments: 'accent', 'auto increment': 'accent', unique: 'accent', fillable: 'ok', nullable: 'warn', hidden: 'bad',
+      queued: 'accent', 'overrides vendor': 'warn', shared: 'accent', default: 'accent', 'without overlapping': 'ok', 'on one server': 'accent', 'in background': 'warn'
+    };
+
+    const VERBS = { GET: 'accent', POST: 'ok', PUT: 'warn', PATCH: 'warn', DELETE: 'bad' };
+
+    // How a column's values look; anything else is text with code links.
+    const formats = {
+      method: (v) => (v.split('|').length > 5 ? [pill('ANY')] : [el('span', { className: 'pills' }, ...v.split('|').map((m) => pill(m, VERBS[m] || '')))]),
+      uri: (v) => breakable('/' + v.replace(/^\//, '')),
+      name: (v) => breakable(String(v)),
+      migration: (v) => breakable(String(v)),
+      status: (v) => [pill(v, v === 'ran' ? 'ok' : 'warn')],
+      exception: (v) => [el('span', { className: 'lerd-muted', textContent: v, title: v })],
+      relations: (v) => [muted(v)],
+      type: (v) => [muted(v)],
+      size: (v) => [v === null ? muted('—') : bytes(v)],
+      flags: (v) => [el('span', { className: 'pills' }, ...v.map((f) => pill(f, FLAG_COLORS[f] || '')))],
+      next_run: (v) => [el('span', { textContent: relative(v), title: v })],
+      // A schema property beside the type, the same column on a model and on a table.
+      nullable: (v) => [v ? pill('null', 'warn') : muted('—')]
+    };
+
+    // Boolean columns become one column of pills, which reads better than a row of dashes.
+    function flagged(rows, keys) {
+      return rows.map((row) => {
+        const rest = Object.fromEntries(Object.entries(row).filter(([k]) => !keys.includes(k)));
+        return { ...rest, flags: keys.filter((k) => row[k]).map((k) => k.replace(/_/g, ' ')) };
+      });
+    }
+
+    function relative(iso) {
+      const minutes = Math.round((new Date(iso) - Date.now()) / 60000);
+      if (minutes < 1) return 'now';
+      if (minutes < 60) return 'in ' + minutes + 'm';
+      const hours = Math.floor(minutes / 60);
+      return hours < 24 ? 'in ' + hours + 'h ' + (minutes % 60) + 'm' : 'in ' + Math.round(hours / 24) + 'd';
+    }
+
+    function bytes(n) {
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let i = 0;
+      while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+      return (i ? n.toFixed(1) : n) + ' ' + units[i];
+    }
+
+    function cell(column, value) {
+      if (value instanceof Node) return [value];
+      if (column === 'nullable') return formats.nullable(value);
+      if (value === true) return [pill('yes', 'ok')];
+      if (value === false) return [muted('—')];
+      if (value === null || value === undefined || value === '') return [muted('—')];
+      if (formats[column]) return formats[column](value);
+      if (Array.isArray(value)) return value.flatMap((v, i) => (i ? [el('br')] : []).concat(cell('', v)));
+      const string = text(value);
+      // Code links, also inside lists like "web, App\Http\Middleware\Foo".
+      const parts = string.split(', ');
+      if (!parts.some((p) => CODE.test(p))) return [string];
+      return parts.flatMap((p, i) => (i ? [', '] : []).concat(CODE.test(p) ? [codeLink(p)] : [p]));
+    }
+
+    // How a column sizes, by its name; any other column keeps to one line.
+    const FIT = ['', 'nullable', 'method', 'status', 'batch', 'flags', 'connection', 'expression', 'next_run', 'timezone', 'type', 'type_name', 'cast', 'queue', 'failed_at', 'default'];
+    const NUM = ['size', 'rows', 'count', 'batch', 'entries', 'pending', 'delayed', 'reserved', 'total'];
+    const PROSE = ['middleware', 'relations', 'listeners', 'events', 'description', 'exception', 'comment', 'columns', 'foreign_columns'];
+    const WRAP = ['uri', 'name', 'migration', 'usage', 'abilities'];
+    const CLAMP = ['exception'];
+    const kindOf = (column) => [
+      FIT.includes(column) ? 'fit' : '', NUM.includes(column) ? 'num fit' : '', PROSE.includes(column) ? 'prose' : '',
+      WRAP.includes(column) ? 'wrap' : '', CLAMP.includes(column) ? 'prose clamp' : ''
+    ].join(' ').trim();
+
+    function table(rows, onClick) {
+      if (!rows.length) return el('div', { className: 'lerd-empty', textContent: 'Nothing found.' });
+      // Columns empty in every row say nothing, such as a table's comment and generation.
+      const empty = (v) => v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
+      const columns = [...new Set(rows.flatMap(Object.keys))].filter((c) => rows.some((row) => !empty(row[c])));
+      const body = rows.map((row) => {
+        const tr = el('tr', {}, ...columns.map((c) => el('td', { className: 'lerd-mono ' + kindOf(c) }, ...cell(c, row[c]))));
+        if (onClick) { tr.className = 'clickable'; tr.onclick = () => onClick(row); }
+        return tr;
+      });
+      const head = columns.map((c) => el('th', { className: kindOf(c), textContent: c.replace(/_/g, ' ') }));
+      return el('div', { className: 'lerd-card flush wrap' }, el('table', {}, el('thead', {}, el('tr', {}, ...head)), el('tbody', {}, ...body)));
+    }
+
+    // Any of the filter's |-separated parts matches, ignoring case; the plugin's PHP matches the same way.
+    function hit(haystack) {
+      const parts = filter.value.toLowerCase().split('|').map((p) => p.trim()).filter(Boolean);
+      return !parts.length || parts.some((p) => haystack.toLowerCase().includes(p));
+    }
+
+    // The source column, the package a row comes from, says something only once vendor rows are in the
+    // list: it shows last, the app's own as "app", and is left out while the tab shows the app alone.
+    function sourced(tab, rows) {
+      return rows.map((row) => {
+        if (!('source' in row)) return row;
+        const { source, ...rest } = row;
+        return vendorOn[tab] ? { ...rest, source: source ?? muted('app') } : rest;
+      });
+    }
+
+    function filtered(rows) {
+      return rows.filter((r) => hit(JSON.stringify(r)));
+    }
+
+    const label = (textContent) => el('span', { className: 'lerd-label', textContent });
+
+    const chosenNote = (what) => el('p', { className: 'lerd-muted' }, 'Shows the default unless the project lists its ' + what + ' under ',
+      el('code', { textContent: 'laravel_inspect: {disks: [...], cache_stores: [...]}' }), ' in .lerd.yaml or .lerd.local.yaml.');
+
+    // Asks before anything that cannot be undone, in a dialog that looks like lerd's own.
+    function confirmAction(title, message, action) {
+      return new Promise((resolve) => {
+        const ok = el('button', { className: 'danger', textContent: action });
+        const cancel = el('button', { textContent: 'Cancel' });
+        const dialog = el('dialog', {}, el('h3', { textContent: title }), el('p', { textContent: message }), el('div', { className: 'lerd-toolbar' }, cancel, ok));
+        const done = (answer) => { dialog.close(); dialog.remove(); resolve(answer); };
+        ok.onclick = () => done(true);
+        cancel.onclick = () => done(false);
+        dialog.oncancel = () => done(false);
+        document.body.append(dialog);
+        dialog.showModal();
+      });
+    }
+
+    // A POST to one of the plugin's endpoints; the answer, or its error in the status line.
+    async function post(path, body) {
+      busy(true);
+      try {
+        const answer = await lerd.api(path + (path.includes('?') ? '&' : '?') + 'site=' + site, { method: 'POST', body: JSON.stringify(body) });
+        status.textContent = '';
+        return typeof answer === 'string' ? JSON.parse(answer) : answer;
+      } catch (err) {
+        status.textContent = err.message;
+        throw err;
+      } finally {
+        busy(false);
+      }
+    }
+
+    const iconButton = (text, onClick, className = '') => {
+      const button = el('button', { textContent: text, className });
+      button.onclick = (e) => { e.stopPropagation(); onClick(); };
+      return button;
+    };
+
+    // Storage climbs its folders by the breadcrumb, so this goes straight to the disks, not back in history.
+    const toDisks = () => iconButton('← Storage', () => go('storage'));
+
+    // Set while a view searches on the server, so the filter box asks it instead of filtering rows.
+    let serverSearch = null;
+
+    function debounce(fn, ms) {
+      let timer;
+      return () => { clearTimeout(timer); timer = setTimeout(fn, ms); };
+    }
+
+    // One folder, a page at a time: the plugin narrows and pages it where the disk keeps it.
+    async function showStorage(diskName, path) {
+      // A folder belongs to the Storage tab, also when the page opens straight on one.
+      current = 'storage';
+      markSection('storage');
+      document.getElementById('scope').hidden = true;
+      // Landing here first, the disk's driver comes with the overview; it sets the placeholder before the listing.
+      if (!overview) overview = await get(paths.overview()).catch(() => null);
+      if (overview?.disks?.find((d) => d.name === diskName)?.driver === 's3') filter.placeholder = 'Name starts with…';
+      const at = (p) => { filter.value = ''; go('storage/' + encodeURIComponent(diskName) + '/' + p.split('/').map(encodeURIComponent).join('/')); };
+      let entries = [];
+      let next = null;
+      let total = null;
+      // The row the keyboard is on.
+      let selected = 0;
+      // Coming up out of a folder below this one, the row of the folder just left gets the selection.
+      const cameFrom = lastFolder && lastFolder.disk === diskName && lastFolder.path.startsWith(path ? path + '/' : '') && lastFolder.path !== path
+        ? lastFolder.path.split('/').slice(0, (path ? path.split('/').length : 0) + 1).join('/')
+        : null;
+      lastFolder = { disk: diskName, path };
+
+      async function page(cursor) {
+        busy(true);
+        try {
+          const body = await lerd.api('storage-list?site=' + site + '&disk=' + encodeURIComponent(diskName) + '&path=' + encodeURIComponent(path)
+            + '&search=' + encodeURIComponent(filter.value) + (cursor !== null ? '&cursor=' + encodeURIComponent(cursor) : ''));
+          return typeof body === 'string' ? JSON.parse(body) : body;
+        } finally {
+          busy(false);
+        }
+      }
+
+      const parts = path ? path.split('/') : [];
+      const crumbs = [iconButton(diskName, () => at(''))].concat(parts.map((part, i) => iconButton(part, () => at(parts.slice(0, i + 1).join('/')))));
+      const head = () => el('div', { className: 'head' }, toDisks(), ...crumbs.flatMap((c, i) => (i ? [muted('/'), c] : [c])));
+
+      render = () => {
+        const rows = entries.map((entry) => ({
+          name: (entry.type === 'dir' ? '📁 ' : '') + entry.name,
+          size: entry.size,
+          modified: entry.modified ? new Date(entry.modified).toLocaleString() : null,
+          '': entry.type === 'file' ? iconButton('Delete', () => removeFile(diskName, entry.path), 'danger') : null
+        }));
+        const more = iconButton('Load more', async () => {
+          const data = await page(next);
+          entries = entries.concat(data.entries);
+          next = data.next;
+          render();
+        });
+        view.replaceChildren(head(),
+          table(rows, (row) => open(rows.indexOf(row))),
+          el('div', { className: 'lerd-toolbar' }, muted(entries.length + (total !== null ? ' of ' + total : '') + ' entries'), next !== null ? more : '',
+            el('span', { className: 'lerd-muted keys', textContent: '↑↓ move · Enter open · ⌫ up · Del delete · / filter' })));
+        select(selected, false);
+      };
+
+      const rowEls = () => [...view.querySelectorAll('tbody tr')];
+      function select(i, focus = true) {
+        const els = rowEls();
+        if (!els.length) return;
+        selected = Math.max(0, Math.min(i, els.length - 1));
+        els.forEach((tr, n) => { tr.classList.toggle('selected', n === selected); tr.tabIndex = n === selected ? 0 : -1; });
+        if (focus) {
+          els[selected].focus({ preventScroll: true });
+          els[selected].scrollIntoView({ block: 'nearest' });
+        }
+      }
+      function open(i) {
+        const entry = entries[i];
+        if (!entry) return;
+        entry.type === 'dir' ? at(entry.path) : openFile(diskName, entry.path);
+      }
+      const up = () => (parts.length ? at(parts.slice(0, -1).join('/')) : go('storage'));
+
+      // Keys work while focus is in the list, or anywhere but a field or a dialog.
+      keys = (e) => {
+        const inField = e.target.matches('input, textarea, select') || document.querySelector('dialog[open]');
+        if (e.target === filter && e.key === 'Escape') { e.preventDefault(); select(selected); return; }
+        if (inField) return;
+        const act = {
+          ArrowDown: () => select(selected + 1), j: () => select(selected + 1),
+          ArrowUp: () => select(selected - 1), k: () => select(selected - 1),
+          Home: () => select(0), End: () => select(Infinity),
+          Enter: () => open(selected), ArrowRight: () => open(selected),
+          Backspace: up, ArrowLeft: up,
+          Delete: () => entries[selected]?.type === 'file' && removeFile(diskName, entries[selected].path),
+          '/': () => filter.focus()
+        }[e.key];
+        if (act && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); act(); }
+      };
+
+      async function reload() {
+        try {
+          const data = await page(null);
+          entries = data.entries;
+          next = data.next;
+          total = data.total ?? null;
+          // S3 searches one name prefix, so | means nothing there.
+          filter.placeholder = data.search === 'prefix' ? 'Name starts with…' : FILTER_HINT;
+          selected = Math.max(0, entries.findIndex((entry) => entry.path === cameFrom));
+          render();
+          if (document.activeElement !== filter) select(selected);
+        } catch (err) {
+          view.replaceChildren(head(), el('div', { className: 'lerd-empty', textContent: err.message }));
+        }
+      }
+
+      view.replaceChildren(head(), el('div', { className: 'sk-wrap' }, skeletonTable(10, 3)));
+      serverSearch = debounce(reload, 300);
+      await reload();
+    }
+
+    // A file's preview, with its folder beneath its name, and for text a button to open it in lerd's viewer.
+    async function openFile(diskName, path) {
+      busy(true);
+      let file;
+      try {
+        const body = await lerd.api('storage-read?site=' + site + '&disk=' + encodeURIComponent(diskName) + '&path=' + encodeURIComponent(path));
+        file = typeof body === 'string' ? JSON.parse(body) : body;
+      } catch (err) {
+        status.textContent = err.message;
+        return;
+      } finally {
+        busy(false);
+      }
+      const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+      const close = el('button', { textContent: 'Close' });
+      const viewer = file.text !== undefined ? iconButton('Open in viewer', () => { done(); lerd.view({ path: file.path, content: file.text, label: diskName }); }) : '';
+      const preview = file.image ? el('img', { src: file.image, alt: file.path })
+        : file.text !== undefined ? el('pre', { className: 'lerd-mono preview', textContent: file.text.slice(0, 200000) })
+        : el('p', { textContent: file.note });
+      const dialog = el('dialog', { className: 'file' },
+        el('h3', { className: 'lerd-mono', textContent: path.split('/').pop() }),
+        el('div', { className: 'lerd-mono lerd-muted where', textContent: diskName + (folder ? ' / ' + folder : '') }),
+        el('p', { className: 'lerd-muted', textContent: bytes(file.size) + ' · ' + file.mime }),
+        preview,
+        el('div', { className: 'lerd-toolbar' }, viewer, close));
+      const done = () => { dialog.close(); dialog.remove(); };
+      close.onclick = done;
+      dialog.onclose = () => dialog.remove();
+      document.body.append(dialog);
+      dialog.showModal();
+    }
+
+    async function removeFile(diskName, path) {
+      if (!await confirmAction('Delete file?', path + ' on ' + diskName + ' is deleted for good.', 'Delete')) return;
+      await post('storage-delete', { disk: diskName, path });
+      route();
+    }
+
+    function cacheView(data) {
+      const stores = data.stores.filter((store) => store.shown);
+      const rows = configured(stores).map((row) => {
+        const store = stores.find((s) => s.name === row.name);
+        return { ...row, '': iconButton('Clear', () => clearStore(store), 'danger') };
+      });
+      // A key's value, looked up in one store.
+      const pick = el('select', {}, ...stores.map((store) => el('option', { value: store.name, textContent: store.name })));
+      const key = el('input', { type: 'search', placeholder: 'Cache key' });
+      const result = el('div');
+      const lookUp = el('button', { className: 'primary', textContent: 'Look up' });
+      lookUp.onclick = async () => {
+        if (!key.value) return;
+        busy(true);
+        try {
+          const body = await lerd.api('cache-get?site=' + site + '&store=' + encodeURIComponent(pick.value) + '&key=' + encodeURIComponent(key.value));
+          const found = typeof body === 'string' ? JSON.parse(body) : body;
+          result.replaceChildren(found.exists
+            ? el('div', { className: 'lerd-card stat' },
+                el('div', { className: 'head' }, pill(found.type, 'accent'),
+                  iconButton('Forget', async () => {
+                    if (!await confirmAction('Forget key?', found.key + ' is removed from ' + pick.value + '.', 'Forget')) return;
+                    await post('cache-forget', { store: pick.value, key: found.key });
+                    result.replaceChildren(el('div', { className: 'lerd-empty', textContent: found.key + ' forgotten.' }));
+                  }, 'danger')),
+                el('pre', { className: 'lerd-mono', textContent: String(found.value) }))
+            : el('div', { className: 'lerd-empty', textContent: found.key + ' is not in ' + pick.value + '.' }));
+        } catch (err) {
+          result.replaceChildren(el('div', { className: 'lerd-empty', textContent: err.message }));
+        } finally {
+          busy(false);
+        }
+      };
+      key.onkeydown = (e) => { if (e.key === 'Enter') lookUp.click(); };
+      const framework = data.framework.map((row) => ({
+        cache: row.cache,
+        state: row.cached ? pill('cached', 'ok') : pill('not cached'),
+        '': iconButton('Clear', async () => { await post('framework-clear', { cache: row.cache }); show('cache', true); })
+      }));
+      return [
+        label('Stores'), table(filtered(rows)), chosenNote('cache stores'),
+        label('Look up a key'), el('div', { className: 'lerd-toolbar' }, pick, key, lookUp), result,
+        label("Laravel's caches"), table(framework)
+      ];
+    }
+
+    async function clearStore(store) {
+      const redis = store.driver === 'redis';
+      const shared = (store.shares_redis_with || []).join(', ');
+      const message = redis
+        ? 'This runs FLUSHDB, which empties the whole Redis database of connection ' + (store.connection || 'default') + '.'
+          + (shared ? ' It also holds: ' + shared + ', which are emptied with it.' : ' Nothing else the app configures uses that database.')
+        : 'Every key in ' + store.name + ' (' + store.driver + ') is removed.';
+      if (!await confirmAction('Clear ' + store.name + '?', message, 'Clear')) return;
+      const answer = await post('cache-clear', { store: store.name });
+      status.textContent = answer.output;
+    }
+
+    // What true and false mean in an about section; a missing storage link is worth a warning.
+    // What true and false mean in an about section, or for one key: [true, false, the false pill's colour].
+    const MEANINGS = {
+      storage: ['linked', 'not linked', 'warn'], cache: ['cached', 'not cached', ''],
+      debug_mode: ['enabled', 'disabled', ''], maintenance_mode: ['on', 'off', '']
+    };
+    // On is the state worth seeing at a glance, so it is the coloured one.
+    const TRUE_COLOURS = { maintenance_mode: 'bad', debug_mode: 'warn' };
+    // The words about writes in capitals, as a human reads them.
+    const ACRONYMS = { url: 'URL', php: 'PHP', sdk: 'SDK', pii: 'PII', dsn: 'DSN', id: 'ID', api: 'API', ssl: 'SSL', sql: 'SQL' };
+    const humanize = (key) => key.split('_').map((w) => ACRONYMS[w] || w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+    function fact(title, key, value) {
+      const meaning = MEANINGS[key] || MEANINGS[title];
+      if (meaning && typeof value === 'boolean') {
+        return [value ? pill(meaning[0], TRUE_COLOURS[key] || 'ok') : meaning[2] ? pill(meaning[1], meaning[2]) : muted(meaning[1])];
+      }
+      // Packages report what they lack in capitals; it reads as a note, not a value.
+      if (typeof value === 'string' && /^(NOT SET|MISSING|DISABLED|NONE|N\/A)\b/.test(value)) return [muted(value.toLowerCase())];
+      if (Array.isArray(value)) return [value.join(' / ')];
+      return cell('', value);
+    }
+
+    function facts(title, values) {
+      const rows = Object.entries(values)
+        .filter(([key, value]) => hit(key + ' ' + text(value)))
+        .map(([key, value]) => el('div', { className: 'fact' }, muted(title === 'storage' ? key : humanize(key)), el('span', { className: 'lerd-mono' }, ...fact(title, key, value))));
+      return rows.length ? el('div', {}, label(title.replace(/_/g, ' ')), el('div', { className: 'lerd-card' }, ...rows)) : '';
+    }
+
+    // A count that opens its tab; it fills in from the tab's own data, so the two always agree.
+    function stat(tab, title, count, kind = () => '') {
+      const number = el('b', {}, bar('48px', 'sk-big'));
+      const caption = muted(typeof title === 'function' ? '' : title);
+      const card = el('div', { className: 'lerd-card stat', tabIndex: 0, role: 'button' }, number, caption);
+      card.onclick = () => go(tab);
+      card.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(tab); } };
+      get(paths[tab](true)).then((data) => {
+        const n = count(data);
+        number.textContent = n;
+        const label = typeof title === 'function' ? title(data) : title;
+        caption.textContent = label;
+        if (kind(n, data)) caption.replaceWith(pill(label, kind(n, data)));
+      }).catch(() => { number.textContent = '?'; });
+      return card;
+    }
+
+    // Name and the default flag first, then the driver, whatever order the config lists keys in.
+    const configured = (rows) => flagged(rows.filter((row) => row.shown), ['default']).map(({ name, flags, driver, shown, ...rest }) => ({ name, flags, driver, ...rest }));
+
+    const views = {
+      async overview(data) {
+        const length = (rows) => rows.length;
+        const pending = (rows) => rows.filter((row) => row.status === 'pending').length;
+        // "488", or "488 / 3" with "migrations / pending" once some wait to run.
+        const withPending = (rows) => rows.length + (pending(rows) ? ' / ' + pending(rows) : '');
+        const migrationsTitle = (rows) => (pending(rows) ? 'migrations / pending' : 'migrations');
+        render = () => view.replaceChildren(
+          el('div', { className: 'stats' },
+            stat('routes', 'routes', length), stat('models', 'models', length), stat('policies', 'policies', length), stat('views', 'views', length),
+            stat('commands', 'commands', length), stat('db-tables', 'tables', length),
+            stat('migrations', migrationsTitle, withPending, (n, rows) => (pending(rows) ? 'warn' : '')),
+            stat('schedule', 'scheduled tasks', length), stat('events', 'events', length), stat('listeners', 'listeners', length),
+            // The tab lists the latest 50; the overview counts them all.
+            stat('failed-jobs', 'failed jobs', () => data.counts.failed_jobs, (n) => (n ? 'bad' : ''))),
+          el('div', { className: 'facts' }, ...Object.entries(data.about).map(([title, values]) => facts(title, values))));
+      },
+      storage(data) {
+        render = () => view.replaceChildren(
+          label('Disks'), table(filtered(configured(data.disks)), (row) => go('storage/' + encodeURIComponent(row.name) + '/')),
+          chosenNote('disks'));
+      },
+      cache(data) {
+        render = () => view.replaceChildren(...cacheView(data));
+      },
+      models(rows) {
+        render = () => view.replaceChildren(table(sourced('models', filtered(rows)), (row) => model(row.class)));
+      },
+      views(rows) {
+        // Filtered on the data, then drawn: the filter reads the rows, not the buttons in them.
+        // source, the package a view ships in, only says something once vendor views are in the list; it goes last.
+        render = () => view.replaceChildren(table(flagged(filtered(rows), ['overrides_vendor']).map((row) => ({
+          name: copyable(row.name),
+          file: fileLink(row.path),
+          flags: row.flags,
+          ...(vendorOn.views ? { source: row.source ?? muted('app') } : {})
+        }))));
+      },
+      policies(rows) {
+        const of = (kind) => sourced('policies', filtered(rows).filter((row) => row.kind === kind).map(({ kind: _, ...row }) => row));
+        render = () => view.replaceChildren(
+          label('Policies'), table(of('policy').map((row) => ({ ...row, abilities: row.abilities || null }))),
+          label('Gates'), table(of('gate')));
+      },
+      config(rows) {
+        // Config values as PHP has them: true and false as words; null and an empty string as words in grey.
+        const configValue = (v) => (v === null ? [muted('null')] : v === '' ? [muted('empty')] : typeof v === 'boolean' ? [String(v)] : cell('', v));
+        // A tree of the config: each file, then each part of the key, as a branch that folds open, with the
+        // number of keys under it; a leaf shows its value and copies its whole key, ready for config('…').
+        // A filter prunes the tree to what matches and opens it. Masked values show as dots in grey.
+        render = () => {
+          const searching = filter.value.trim() !== '';
+          const root = { children: {} };
+          filtered(rows).forEach((row) => {
+            let node = root;
+            row.key.split('.').forEach((part) => { node = (node.children[part] ??= { children: {}, count: 0 }); });
+            node.row = row;
+          });
+          const count = (node) => (node.count = node.row && !Object.keys(node.children).length ? 1 : Object.values(node.children).reduce((n, c) => n + count(c), 0));
+          count(root);
+          const draw = (name, node, path) => {
+            const children = Object.entries(node.children).sort(([a, x], [b, y]) => (!!x.row && !Object.keys(x.children).length) === (!!y.row && !Object.keys(y.children).length) ? a.localeCompare(b, undefined, { numeric: true }) : (x.row ? -1 : 1));
+            if (node.row && !children.length) {
+              const row = node.row;
+              return el('div', { className: 'leaf' }, el('span', { className: 'code' }, el('span', { className: 'lerd-mono', textContent: name }), copyButton(row.key)),
+                el('span', { className: 'lerd-mono value' }, ...(row.masked ? [muted(row.value)] : configValue(row.value))));
+            }
+            const details = el('details', { open: searching || configOpen.has(path) },
+              el('summary', {}, el('span', { className: 'lerd-mono', textContent: name }), muted(String(node.count))),
+              el('div', { className: 'branch' }, ...children.map(([part, child]) => draw(part, child, path + '.' + part))));
+            details.addEventListener('toggle', () => { if (!searching) details.open ? configOpen.add(path) : configOpen.delete(path); });
+            return details;
+          };
+          const files = Object.entries(root.children).sort(([a], [b]) => a.localeCompare(b));
+          view.replaceChildren(files.length
+            ? el('div', { className: 'lerd-card tree' }, ...files.map(([name, node]) => draw(name, node, name)))
+            : el('div', { className: 'lerd-empty', textContent: 'Nothing found.' }));
+        };
+      },
+      middleware(rows) {
+        // Kind narrows to the global stack, the groups or the aliases, each with its count under the filter.
+        // An alias or group name copies, ready for ->middleware('…'); global middleware has none.
+        render = () => {
+          const shown = filtered(rows);
+          // Group last, so the group select it opens sits right beside it.
+          const kinds = [['all', 'All'], ['global', 'Global'], ['alias', 'Alias'], ['group', 'Group']];
+          const bar = el('span', { className: 'seg' }, ...kinds.map(([kind, title]) => {
+            const n = kind === 'all' ? shown.length : shown.filter((row) => row.kind === kind).length;
+            const button = el('button', { textContent: title + ' ' + n });
+            button.setAttribute('aria-pressed', String(middlewareKind === kind));
+            button.onclick = () => { middlewareKind = kind; render(); };
+            return button;
+          }));
+          let picked = middlewareKind === 'all' ? shown : shown.filter((row) => row.kind === middlewareKind);
+          // Under Group, one group can be picked, such as web or api.
+          let groupPick = '';
+          if (middlewareKind === 'group') {
+            const groups = [...new Set(picked.map((row) => row.name))].sort();
+            if (middlewareGroup && !groups.includes(middlewareGroup)) middlewareGroup = '';
+            groupPick = el('select', {},
+              el('option', { value: '', textContent: 'All groups (' + picked.length + ')' }),
+              ...groups.map((group) => el('option', { value: group, textContent: group + ' (' + picked.filter((row) => row.name === group).length + ')' })));
+            groupPick.value = middlewareGroup;
+            groupPick.onchange = () => { middlewareGroup = groupPick.value; render(); };
+            if (middlewareGroup) picked = picked.filter((row) => row.name === middlewareGroup);
+          }
+          view.replaceChildren(el('div', { className: 'lerd-toolbar' }, bar, groupPick),
+            table(sourced('middleware', picked).map((row) => ({ ...row, name: row.name ? copyable(row.name) : null }))));
+        };
+      },
+      channels(rows) {
+        render = () => view.replaceChildren(table(filtered(rows).map(({ channel, ...rest }) => ({ channel: copyable(channel), ...rest }))));
+      },
+      bindings(rows) {
+        rows = flagged(rows, ['shared']);
+        render = () => view.replaceChildren(table(sourced('bindings', filtered(rows))));
+      },
+      migrations(rows) {
+        render = () => view.replaceChildren(table(filtered(rows).map(({ migration, path, ...rest }) => ({ migration: namedFile(migration, path), ...rest }))));
+      },
+      listeners(rows) {
+        rows = flagged(rows, ['queued']);
+        render = () => view.replaceChildren(table(sourced('listeners', filtered(rows))));
+      },
+      schedule(rows) {
+        rows = flagged(rows, ['without_overlapping', 'on_one_server', 'in_background']);
+        // The command with buttons to copy it and to open the class or closure it runs.
+        // It wraps between words only: hyphens show as non-breaking ones, so --send-preview stays whole;
+        // the copy button copies the command as written.
+        const command = (row) => el('span', { className: 'code' },
+          el('span', { className: 'words', textContent: row.command.replace(/-/g, '\u2011') }), copyButton(row.command),
+          editor && row.target && ownCode(row.target) ? openButton(row.target, row.command) : '');
+        render = () => view.replaceChildren(table(filtered(rows).map(({ command: text, target, ...rest }) => ({ command: command({ command: text, target }), ...rest }))));
+      },
+      async 'db-tables'(rows) {
+        // Each table with the app's model on it, when it has one.
+        const models = await get(paths.models(true)).catch(() => []);
+        const byTable = Object.fromEntries(models.map((row) => [row.table, row.class]));
+        rows = rows.map((row) => ({ name: row.name, model: byTable[row.name] ?? null, ...row }));
+        const tables = el('div');
+        view.replaceChildren(tables, el('p', { className: 'lerd-muted note', textContent: 'Rows are estimates from the database\'s statistics; a table\'s own page counts them exactly.' }));
+        render = () => tables.replaceChildren(table(filtered(rows), (row) => dbTable(row.name)));
+      }
+    };
+
+    // Where the page is lives in the hash (#routes, #model/<class>, #table/<name>), so the browser's
+    // Back and Forward step through it. stack mirrors that history for the Back button's label.
+    // ponytail: A -> B -> A reads as a step back; a counter in history.state if that label matters.
+    const stack = [location.hash.slice(1) || 'overview'];
+    const model = (name) => go('model/' + encodeURIComponent(name));
+    const dbTable = (name) => go('table/' + encodeURIComponent(name));
+
+    function go(hash) {
+      if (location.hash.slice(1) === hash) route();
+      else location.hash = hash;
+    }
+
+    function route() {
+      serverSearch = null;
+      keys = null;
+      const hash = location.hash.slice(1) || 'overview';
+      const [kind, ...rest] = hash.split('/');
+      const name = decodeURIComponent(rest.join('/'));
+      // Set at once from the disk's driver, so an S3 folder never shows the other placeholder first.
+      const disk = kind === 'storage' && rest.length ? overview?.disks?.find((d) => d.name === decodeURIComponent(rest[0])) : null;
+      filter.placeholder = disk?.driver === 's3' ? 'Name starts with…' : FILTER_HINT;
+      if (kind === 'config') {
+        if (rest.length) configOpen.add(name);
+        show('config');
+      } else if (kind === 'storage' && rest.length) showStorage(decodeURIComponent(rest[0]), decodeURIComponent(rest.slice(1).join('/')));
+      else if (kind === 'model') showModel(name);
+      else if (kind === 'table') showTable(name);
+      else show(tabs[hash] ? hash : 'overview');
+    }
+
+    addEventListener('hashchange', () => {
+      const hash = location.hash.slice(1) || 'overview';
+      if (stack.at(-2) === hash) stack.pop();
+      else stack.push(hash);
+      route();
+    });
+
+    function title(hash) {
+      const [kind, ...rest] = hash.split('/');
+      const name = decodeURIComponent(rest.join('/'));
+      return kind === 'model' ? name.split('\\').pop() : kind === 'table' || kind === 'config' ? name : tabs[hash] || 'Back';
+    }
+
+    // The app's models on a table, from the Models tab's data.
+    async function modelsOn(tableName) {
+      const rows = await get(paths.models(true)).catch(() => []);
+      return rows.filter((row) => row.table === tableName).map((row) => row.class);
+    }
+
+    function jump(label, onClick) {
+      const button = el('button', { textContent: label });
+      button.onclick = onClick;
+      return button;
+    }
+
+    async function showModel(name) {
+      if (!cache.has('models?name=' + encodeURIComponent(name))) view.replaceChildren(skeletonDetail());
+      const data = await load('models?name=' + encodeURIComponent(name));
+      // Other models' relations to this one take a pass over every model, so they load beside the rest.
+      let references = el('div', { className: 'sk-wrap' }, skeletonTable(3, 3));
+      get('model-references?name=' + encodeURIComponent(data.class) + vendorParam('models'))
+        .then((rows) => {
+          // Swap the node, not its children; render() picks up the new one.
+          const loaded = table(rows, (row) => model(row.model));
+          references.replaceWith(loaded);
+          references = loaded;
+        })
+        .catch((err) => {
+          const failed = el('div', { className: 'lerd-empty', textContent: err.message });
+          references.replaceWith(failed);
+          references = failed;
+        });
+      render = () => view.replaceChildren(
+        el('div', { className: 'head' }, back(), el('h2', { className: 'lerd-mono' }, codeLink(data.class)),
+          jump('Table ' + data.table, () => dbTable(data.table)), pill(data.count + ' rows', 'accent'), data.policy ? pill('policy ' + data.policy.split('\\').pop()) : ''),
+        label('Attributes'), table(filtered(flagged(data.attributes, ['increments', 'unique', 'fillable', 'hidden', 'appended']))),
+        label('Relations'), table(data.relations, (row) => model(row.related)),
+        label('Referenced by'), references,
+        label('Observers and events'), table([...data.observers, ...data.events]));
+      render();
+    }
+
+    async function showTable(name) {
+      if (!cache.has('db-table?name=' + encodeURIComponent(name))) view.replaceChildren(skeletonDetail());
+      const data = await load('db-table?name=' + encodeURIComponent(name));
+      const models = await modelsOn(data.table);
+      render = () => view.replaceChildren(
+        el('div', { className: 'head' }, back(), el('h2', { className: 'lerd-mono', textContent: data.table }), pill(data.rows + ' rows', 'accent'),
+          ...models.map((cls) => jump('Model ' + cls.split('\\').pop(), () => model(cls)))),
+        // nullable beside the type, where it sits on a model's attributes too.
+        label('Columns'), table(filtered(flagged(data.columns.map(({ name, type_name, type, nullable, ...rest }) => ({ name, type_name, type, nullable, ...rest })), ['auto_increment']))),
+        label('Indexes'), table(data.indexes),
+        label('Foreign keys'), table(data.foreign_keys));
+      render();
+    }
+
+    function back() {
+      const previous = stack.at(-2);
+      const button = el('button', { textContent: '← ' + (previous ? title(previous) : tabs[current]) });
+      button.onclick = () => (previous ? history.back() : go(current));
+      return button;
+    }
+
+    // "Include 15 vendor": how many rows the toggle adds, from the tab's list with and without vendor.
+    // App, Vendor and All for the tabs that have vendor rows. Vendor is All without the app's rows, so
+    // both fetch the list with vendor; the counts come from that list and the app's own.
+    const SCOPED = ['routes', 'middleware', 'models', 'policies', 'views', 'commands', 'bindings', 'events', 'listeners'];
+    const scope = {};
+
+    async function scopeButtons(name) {
+      const bar = document.getElementById('scope');
+      bar.hidden = !SCOPED.includes(name);
+      if (bar.hidden) return;
+      const button = (value, label) => {
+        const b = el('button', { textContent: label });
+        b.setAttribute('aria-pressed', String((scope[name] || 'app') === value));
+        b.onclick = () => {
+          scope[name] = value;
+          vendorOn[name] = value !== 'app';
+          show(name);
+        };
+        return b;
+      };
+      const draw = (own, all) => bar.replaceChildren(
+        button('app', 'App' + (own !== null ? ' ' + own : '')),
+        button('vendor', 'Vendor' + (all !== null ? ' ' + (all - own) : '')),
+        button('all', 'All' + (all !== null ? ' ' + all : '')));
+      draw(null, null);
+      try {
+        const [own, all] = await Promise.all([get(paths[name](true)), get(paths[name](true) + '&vendor=1')]);
+        if (current === name) draw(own.length, all.length);
+      } catch {
+        // The buttons stay without counts.
+      }
+    }
+
+    function count(name, data) {
+      const n = Array.isArray(data) ? data.length : null;
+      const button = document.querySelector(`#tabs [data-tab="${name}"] .n`);
+      if (button && n !== null) button.textContent = n;
+      const option = document.querySelector(`#section-select option[value="${name}"]`);
+      if (option && n !== null) option.textContent = tabs[name] + ' (' + n + ')';
+    }
+
+    async function show(name, fresh = false) {
+      // Keep the filter when the same tab reloads, such as on the vendor toggle.
+      if (name !== current) filter.value = '';
+      current = name;
+      scopeButtons(name);
+      markSection(name);
+      if (fresh || !cache.has(paths[name]())) view.replaceChildren(skeletonFor(name));
+      let data = await load(paths[name](), fresh);
+      // A site that is not a Laravel app gets one calm line instead of tabs that cannot fill.
+      if (data && data.not_laravel) {
+        document.querySelector('.side').hidden = true;
+        document.querySelector('.layout').style.display = 'block';
+        document.querySelector('.lerd-toolbar').hidden = true;
+        document.getElementById('section-select').hidden = true;
+        view.replaceChildren(el('div', { className: 'lerd-empty loading' },
+          lerd.context.site + ' is ' + data.reason + ', so there is nothing to inspect here.'));
+        return;
+      }
+      // Code links need the app's namespaces, which the overview carries.
+      overview = await get(paths.overview());
+      namespaces = overview.namespaces;
+      if (current !== name) return;
+      if (!vendorOn[name]) count(name, data);
+      // Vendor alone is the list with vendor, less the app's rows.
+      if (scope[name] === 'vendor') data = data.filter((row) => row.source != null);
+      if (views[name]) {
+        await views[name](data);
+      } else {
+        render = () => view.replaceChildren(table(sourced(name, filtered(data))));
+      }
+      render();
+    }
+
+    // The sidebar's groups, and the same as a select for a narrow frame.
+    const GROUPS = [
+      ['', ['overview']],
+      ['HTTP', ['routes', 'middleware', 'policies', 'channels']],
+      ['Data', ['models', 'db-tables', 'migrations']],
+      ['Code', ['views', 'commands', 'events', 'listeners', 'bindings', 'schedule', 'config']],
+      ['Runtime', ['queues', 'failed-jobs', 'cache', 'storage']]
+    ];
+    const sectionSelect = document.getElementById('section-select');
+    for (const [group, names] of GROUPS) {
+      if (group) document.getElementById('tabs').append(el('span', { className: 'lerd-label', textContent: group }));
+      const optgroup = group ? el('optgroup', { label: group }) : sectionSelect;
+      for (const name of names) {
+        const button = el('button', { role: 'tab' }, tabs[name], el('span', { className: 'n lerd-muted' }));
+        button.dataset.tab = name;
+        button.onclick = () => go(name);
+        document.getElementById('tabs').append(button);
+        optgroup.append(el('option', { value: name, textContent: tabs[name] }));
+      }
+      if (group) sectionSelect.append(optgroup);
+    }
+    sectionSelect.onchange = () => go(sectionSelect.value);
+
+    function markSection(name) {
+      document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+      document.querySelector(`#tabs [data-tab="${name}"]`)?.scrollIntoView({ block: 'nearest' });
+      sectionSelect.value = name;
+    }
+    filter.oninput = () => (serverSearch ? serverSearch() : render());
+    // A view's keyboard handler, such as the file browser's; route() clears it on leaving.
+    let keys = null;
+    // The folder the file browser showed last, so going up selects the folder it came out of.
+    let lastFolder = null;
+    addEventListener('keydown', (e) => keys?.(e));
+
+    document.getElementById('reload').onclick = () => show(current, true);
+
+    // Open buttons only when lerd has an editor to open code in.
+    let editor = '';
+    get('editor').then((data) => { editor = data.editor; render(); }).catch(() => {});
+    // Every other section in one request, which the plugin answers from one boot of the app (and the index
+    // where it can); each path's promise goes in the cache, so a section opened meanwhile waits for it.
+    // The overview loads on its own beside it, so the first page shows without waiting for the rest.
+    const prefetch = [...new Set(Object.keys(tabs).filter((name) => name !== 'overview').map((name) => paths[name](true)))]
+      .filter((path) => path !== paths.overview() && !cache.has(path));
+    const batch = lerd.api('batch?site=' + site, { method: 'POST', body: JSON.stringify({ paths: prefetch }) })
+      .then((body) => (typeof body === 'string' ? JSON.parse(body) : body));
+    for (const path of prefetch) {
+      const one = batch.then((all) => {
+        const answer = all.not_laravel ? all : all[path];
+        if (answer && answer.error) throw new Error(answer.error);
+        return answer;
+      });
+      one.catch(() => cache.delete(path));
+      cache.set(path, one);
+    }
+    route();
+    for (const name of Object.keys(tabs)) {
+      if (name !== 'overview') get(paths[name](true)).then((data) => count(name, data)).catch(() => {});
+    }
+  </script>
+</body>
+</html>

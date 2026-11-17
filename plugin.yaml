@@ -1,0 +1,164 @@
+api_version: 1
+name: laravel-inspect
+lerd: ">=1.39"
+version: 0.1.0
+description: See inside a Laravel app - routes, middleware, models, policies, views, commands, config, bindings, queues, events, storage and cache - on its own tab and for AI agents
+docs: DOCS.md
+icon: ui/icon.svg
+screenshots: [screenshots/overview.png, screenshots/routes.png, screenshots/model.png, screenshots/config.png]
+requires: [python3]
+
+commands:
+  - {name: overview, usage: "Versions, drivers and counts of the app", run: bin/overview}
+  - {name: routes, usage: "[filter] [--vendor] Routes with name, action and middleware", run: bin/routes}
+  - {name: models, usage: "[Model] [--vendor] Eloquent models, or one model's attributes and relations", run: bin/models}
+  - {name: db-tables, usage: "[filter] [--counts] Database tables", run: bin/db-tables}
+  - {name: db-table, usage: "<table> Columns, indexes and foreign keys of a table", run: bin/db-table}
+  - {name: migrations, usage: "Ran and pending migrations", run: bin/migrations}
+  - {name: schedule, usage: "Scheduled tasks with next run time", run: bin/schedule}
+  - {name: events, usage: "[filter] [--vendor] Events and their listeners", run: bin/events}
+  - {name: listeners, usage: "[filter] [--vendor] Listeners with their events and queue", run: bin/listeners}
+  - {name: views, usage: "[filter] [--vendor] Blade views by name, with their file", run: bin/views}
+  - {name: commands, usage: "[filter] [--vendor] Artisan commands with usage and class", run: bin/commands}
+  - {name: config, usage: "[filter] [--key=app.url] Resolved config, credentials masked", run: bin/config}
+  - {name: policies, usage: "[filter] [--vendor] Model policies with their abilities, and gates", run: bin/policies}
+  - {name: bindings, usage: "[filter] [--vendor] What the container resolves each abstract to", run: bin/bindings}
+  - {name: queues, usage: "[filter] Jobs waiting on the queues the app uses", run: bin/queues}
+  - {name: channels, usage: "[filter] Broadcast channels and what authorizes them", run: bin/channels}
+  - {name: middleware, usage: "[filter] [--vendor] Global middleware, groups and aliases", run: bin/middleware}
+  - {name: failed-jobs, usage: "[limit] Failed queue jobs", run: bin/failed-jobs}
+  - {name: storage-list, usage: "<disk> [path] One folder of a storage disk", run: bin/storage-list}
+  - {name: storage-read, usage: "<disk> <path> A file's text from a storage disk", run: bin/storage-read}
+  - {name: cache-get, usage: "<store> <key> A cache key's value", run: bin/cache-get}
+  - {name: open, usage: "<Class[@method]> Open a class in the editor picked in lerd", run: bin/open}
+
+mcp:
+  skill: SKILL.md
+  tools:
+    - name: overview
+      description: "Laravel and PHP versions, environment, cache/queue/session drivers, installed ecosystem packages, storage disks and cache stores (without credentials; shown marks the ones the project picked in .lerd.yaml, or the defaults), and counts of routes, models, pending migrations, failed jobs and scheduled tasks."
+      input_schema: {type: object, required: [site], properties: {site: {type: string, description: Site name}}}
+      run: bin/overview
+    - name: routes
+      description: "Every route with method, URI, name, controller action, middleware and domain. Filter matches any of those fields. Routes from vendor packages only with vendor."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include routes from vendor packages}}}
+      run: bin/routes
+    - name: models
+      description: "Eloquent models with table, connection and relations. With name (short like Order or full class), one model's attributes (type, cast, fillable, hidden, appended), relations, events, observers, policy and row count."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, name: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, counts: {type: boolean, description: Add row counts to the list}, vendor: {type: boolean, description: Include models from vendor packages}, references: {type: boolean, description: "With name: add referenced_by, the relations on other models that point at this one"}}}
+      run: bin/models
+    - name: db-tables
+      description: "Tables of the app's database with size, optionally row counts (estimates from the database's statistics on MySQL and PostgreSQL; db-table gives an exact count)."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, connection: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, counts: {type: boolean}}}
+      run: bin/db-tables
+    - name: db-table
+      description: "One table's columns, indexes and foreign keys."
+      input_schema: {type: object, required: [site, name], properties: {site: {type: string}, connection: {type: string}, name: {type: string}}}
+      run: bin/db-table
+    - name: migrations
+      description: "Every migration with status ran or pending, its batch and its file; pending first, then the newest."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, connection: {type: string}}}
+      run: bin/migrations
+    - name: schedule
+      description: "Scheduled tasks with cron expression, next run time and overlap/one-server/background flags."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}}}
+      run: bin/schedule
+    - name: events
+      description: "Registered events and their listeners, including discovered ones. Without vendor only the app's listeners, and events that are the app's or have one. Filter matches event or listener names."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include vendor events and listeners}}}
+      run: bin/events
+    - name: listeners
+      description: "Every event listener with the events it handles, whether it is queued (ShouldQueue), and its queue and connection. Without vendor only the app's listeners."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include vendor listeners}}}
+      run: bin/listeners
+    - name: storage-list
+      description: "One page of one folder of a storage disk (not recursive): folders first, then files, with size and modified time. disk is a name from overview's disks; path is relative to the disk's root. search narrows the folder on the server: a substring on local disks, a name prefix on S3 (search says which). Pass next back as cursor for the following page."
+      input_schema: {type: object, required: [site, disk], properties: {site: {type: string}, disk: {type: string}, path: {type: string}, search: {type: string}, cursor: {type: string}, limit: {type: integer, description: "Entries per page, default 500, max 5000"}}}
+      run: bin/storage-list
+    - name: storage-read
+      description: "A file on a storage disk: its text, or a data URL for an image; files over 1 MB or binary give only size and type."
+      input_schema: {type: object, required: [site, disk, path], properties: {site: {type: string}, disk: {type: string}, path: {type: string}}}
+      run: bin/storage-read
+    - name: cache
+      description: "Cache stores (without credentials; shown marks the ones the project picked, or the default) with how much each holds (entries, and bytes for file and database stores; for Redis the keys in its whole database), for Redis stores what else shares that database; and whether Laravel's config, route, event and view caches are built."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}}}
+      run: bin/cache
+    - name: cache-get
+      description: "Whether a key is in a cache store, and its value (scalars as is, anything else printed, up to 64 KB). Read only: clearing and forgetting are for the user in the dashboard."
+      input_schema: {type: object, required: [site, store, key], properties: {site: {type: string}, store: {type: string}, key: {type: string}}}
+      run: bin/cache-get
+    - name: views
+      description: "Every Blade view by the name view() takes (dot notation, namespace::name for namespaced ones) with its file and, for a vendor view, the composer package (source) it ships in. Without vendor, the app's own views and the package views it overrides in resources/views/vendor; with vendor, packages' views too."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include views from vendor packages}}}
+      run: bin/views
+    - name: commands
+      description: "Every Artisan command with its usage (arguments and options), description, class and source package. Hidden commands only with vendor."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include vendor packages}}}
+      run: bin/commands
+    - name: config
+      description: "The config as the app resolved it (after .env and the env_provider), flattened to dot keys such as database.connections.mysql.host. Credentials are masked: keys that read like one, and values equal to a secret environment variable. key narrows to one key or subtree."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, key: {type: string, description: "A dot key or its prefix, such as mail or queue.connections.redis"}, filter: {type: string, description: "Ignores case; terms separated by | match any"}}}
+      run: bin/config
+    - name: policies
+      description: "One list of each model's policy (kind policy: model, policy, the abilities it defines), registered or found by Laravel's naming, and the abilities defined with Gate::define (kind gate: ability, callback). Vendor ones only with vendor."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include vendor packages}}}
+      run: bin/policies
+    - name: bindings
+      description: "What the service container resolves each bound abstract (an interface or a key) to: the concrete class or a closure's place, whether it is a singleton, and its source package."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include vendor packages}}}
+      run: bin/bindings
+    - name: queues
+      description: "Jobs waiting right now on the queues the app uses (the default connection, queues its queued classes and Horizon name, and failed jobs' queues): pending, delayed, reserved and total."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}}}
+      run: bin/queues
+    - name: channels
+      description: "The broadcast channels the app authorizes, such as user.{id}, with the closure or channel class that decides."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}}}
+      run: bin/channels
+    - name: middleware
+      description: "The HTTP middleware: the global stack, each group (web, api) with what it runs, and the aliases routes use (auth, throttle) with their classes. Vendor aliases only with vendor."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include vendor packages}}}
+      run: bin/middleware
+    - name: failed-jobs
+      description: "Latest failed queue jobs with job class, queue, time and the exception's first line."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, limit: {type: integer}}}
+      run: bin/failed-jobs
+
+# Every endpoint boots the app, so none is reachable from the LAN.
+api:
+  - {path: overview, methods: [GET], run: bin/overview, loopback_only: true}
+  - {path: routes, methods: [GET], run: bin/routes, loopback_only: true}
+  - {path: models, methods: [GET], run: bin/models, loopback_only: true, timeout: 2m}
+  - {path: model-references, methods: [GET], run: bin/model-references, loopback_only: true, timeout: 2m}
+  - {path: db-tables, methods: [GET], run: bin/db-tables, loopback_only: true, timeout: 2m}
+  - {path: db-table, methods: [GET], run: bin/db-table, loopback_only: true}
+  - {path: migrations, methods: [GET], run: bin/migrations, loopback_only: true}
+  - {path: schedule, methods: [GET], run: bin/schedule, loopback_only: true}
+  - {path: events, methods: [GET], run: bin/events, loopback_only: true}
+  - {path: listeners, methods: [GET], run: bin/listeners, loopback_only: true}
+  - {path: views, methods: [GET], run: bin/views, loopback_only: true}
+  - {path: commands, methods: [GET], run: bin/commands, loopback_only: true}
+  - {path: config, methods: [GET], run: bin/config, loopback_only: true}
+  - {path: policies, methods: [GET], run: bin/policies, loopback_only: true}
+  - {path: bindings, methods: [GET], run: bin/bindings, loopback_only: true}
+  - {path: queues, methods: [GET], run: bin/queues, loopback_only: true}
+  - {path: channels, methods: [GET], run: bin/channels, loopback_only: true}
+  - {path: middleware, methods: [GET], run: bin/middleware, loopback_only: true}
+  - {path: failed-jobs, methods: [GET], run: bin/failed-jobs, loopback_only: true}
+  - {path: open, methods: [POST], run: bin/open, loopback_only: true}
+  # Many sections from one boot of the app, for the tab's first load.
+  - {path: batch, methods: [POST], run: bin/batch, loopback_only: true, timeout: 2m}
+  - {path: storage-list, methods: [GET], run: bin/storage-list, loopback_only: true}
+  - {path: storage-read, methods: [GET], run: bin/storage-read, loopback_only: true}
+  - {path: storage-delete, methods: [POST], run: bin/storage-delete, loopback_only: true}
+  - {path: cache, methods: [GET], run: bin/cache, loopback_only: true}
+  - {path: cache-get, methods: [GET], run: bin/cache-get, loopback_only: true}
+  - {path: cache-forget, methods: [POST], run: bin/cache-forget, loopback_only: true}
+  - {path: cache-clear, methods: [POST], run: bin/cache-clear, loopback_only: true}
+  - {path: framework-clear, methods: [POST], run: bin/framework-clear, loopback_only: true}
+  - {path: editor, methods: [GET], run: bin/editor}
+
+ui:
+  # Only on sites that use a database, which hides it on JS apps and static sites; lerd has no
+  # condition for a framework, and the tab still says calmly when a site is not a Laravel app.
+  site_tab: {title: Laravel, entry: ui/site.html, when: database}

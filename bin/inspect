@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+# One dispatcher for every surface. The section is the name this file is called
+# by (bin/routes links here), the arguments come from MCP's JSON on stdin, the
+# API's query string and body, or the CLI's argv.
+import hashlib
+import json
+import os
+import signal
+import subprocess
+import sys
+import urllib.request
+from urllib.parse import parse_qsl
+
+SECTION = os.path.basename(sys.argv[0]).replace('-', '_')
+SURFACE = os.environ.get('LERD_SURFACE', 'cli')
+# The CLI's positional argument, per section.
+POSITIONAL = {'routes': 'filter', 'models': 'name', 'db_tables': 'filter', 'db_table': 'name',
+              'events': 'filter', 'listeners': 'filter', 'views': 'filter', 'commands': 'filter', 'config': 'filter', 'policies': 'filter', 'bindings': 'filter', 'queues': 'filter', 'channels': 'filter', 'middleware': 'filter', 'storage_list': 'disk', 'storage_read': 'disk', 'cache_get': 'store', 'failed_jobs': 'limit', 'open': 'target'}
+# The CLI's second positional argument, after the disk or store.
+SECOND = {'storage_list': 'path', 'storage_read': 'path', 'cache_get': 'key'}
+# Sections that only read the code, so their answer is indexed until the code changes.
+INDEXED = {'routes', 'models', 'model_references', 'events', 'listeners', 'views', 'commands', 'policies', 'bindings', 'channels', 'middleware'}
+# What the indexed sections are read from; vendor shows through composer.lock.
+SOURCES = ['app', 'routes', 'config', 'bootstrap', 'database', 'resources/views', 'composer.lock', '.env']
+
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+
+def fingerprint(path):
+    # Newest change and file count, so an added, changed or deleted file both show.
+    newest, count = 0, 0
+    # The plugin's own PHP counts too, so a new version of it is not answered from an old index.
+    stack = [os.path.join(path, s) for s in SOURCES] + [os.path.join(os.environ['LERD_PLUGIN_DIR'], 'php')]
+    while stack:
+        current = stack.pop()
+        try:
+            if os.path.isdir(current) and not current.endswith('/bootstrap/cache'):
+                stack.extend(e.path for e in os.scandir(current))
+            else:
+                newest, count = max(newest, os.stat(current).st_mtime_ns), count + 1
+        except FileNotFoundError:
+            pass
+    return f'{newest}:{count}'
+
+
+def project_settings(path):
+    # This plugin's block in the project's .lerd.yaml, with .lerd.local.yaml over it:
+    #   laravel_inspect:
+    #     disks: [local, public, s3]
+    #     cache_stores: [redis]
+    # ponytail: needs PyYAML; without it the settings are ignored and everything shows.
+    try:
+        import yaml
+    except ImportError:
+        return {}
+    settings = {}
+    for name in ('.lerd.yaml', '.lerd.local.yaml'):
+        try:
+            with open(os.path.join(path, name)) as f:
+                settings.update((yaml.safe_load(f) or {}).get('laravel_inspect') or {})
+        except (FileNotFoundError, yaml.YAMLError, AttributeError):
+            pass
+    return settings
+
+
+def with_settings(path, section, args):
+    if section in ('overview', 'cache', 'queues'):
+        settings = project_settings(path)
+        args = {**args, **{k: settings[k] for k in ('disks', 'cache_stores', 'queues') if isinstance(settings.get(k), list)}}
+    return args
+
+
+def index_file(path, section, args):
+    # The index entry for an answer that only reads code, or None for one that must be read live.
+    if section not in INDEXED or args.get('counts') or (section == 'models' and args.get('name')):
+        return None
+    key = hashlib.sha1(json.dumps([path, section, args], sort_keys=True).encode()).hexdigest()
+    return os.path.join(os.environ['LERD_PLUGIN_DATA'], 'index', key + '.json')
+
+
+def read_index(index, stamp):
+    try:
+        with open(index) as f:
+            entry = json.load(f)
+        return entry['output'] if entry['fingerprint'] == stamp else None
+    except (FileNotFoundError, ValueError, KeyError):
+        return None
+
+
+def write_index(index, stamp, output):
+    os.makedirs(os.path.dirname(index), exist_ok=True)
+    with open(index + '.tmp', 'w') as f:
+        json.dump({'fingerprint': stamp, 'output': output}, f)
+    os.replace(index + '.tmp', index)
+
+
+def php(path, section, args):
+    script = os.path.join(os.environ['LERD_PLUGIN_DIR'], 'php', 'inspect.php')
+    result = subprocess.run([os.environ['LERD_BIN'], 'php', script, section, json.dumps(args)],
+                            cwd=path, capture_output=True, text=True)
+    if result.returncode != 0:
+        sys.exit(result.stderr.strip() or result.stdout.strip() or 'inspect failed')
+    return result.stdout
+
+
+def run_php(path, section, args):
+    args = with_settings(path, section, args)
+    # fresh skips the index for changes it cannot see, such as a symlinked local package.
+    fresh = args.pop('fresh', False)
+    index = index_file(path, section, args)
+    stamp = fingerprint(path) if index else None
+    if index and not fresh:
+        cached = read_index(index, stamp)
+        if cached is not None:
+            return cached
+    output = php(path, section, args)
+    if index:
+        write_index(index, stamp, output)
+    return output
+
+
+def run_batch(path, paths):
+    # Many dashboard paths ("routes?", "db-tables?counts=1") answered by one boot of the app instead of
+    # one each; indexed ones still come from the index, and only the rest reach PHP.
+    stamp = fingerprint(path)
+    answers, missing = {}, []
+    for item in paths:
+        section, _, query = item.partition('?')
+        section = section.replace('-', '_')
+        args = with_settings(path, section, dict(parse_qsl(query)))
+        index = index_file(path, section, args)
+        cached = read_index(index, stamp) if index else None
+        if cached is not None:
+            answers[item] = json.loads(cached)
+        else:
+            missing.append((item, section, args, index))
+    if missing:
+        results = json.loads(php(path, 'batch', {'items': [[section, args] for _, section, args, _ in missing]}))
+        for (item, _, _, index), result in zip(missing, results):
+            # A section that failed answers {"error": why}, as the dashboard's error line shows it.
+            answers[item] = result['ok'] if 'ok' in result else result
+            if index and 'ok' in result:
+                write_index(index, stamp, json.dumps(result['ok'], indent=4, ensure_ascii=False))
+    return answers
+
+
+def read_args():
+    if SURFACE == 'mcp':
+        return json.loads(sys.stdin.read() or '{}')
+    if SURFACE == 'api':
+        args = dict(parse_qsl(os.environ.get('LERD_QUERY', '')))
+        body = sys.stdin.read().strip()
+        if body:
+            args.update(json.loads(body))
+        return args
+    args = {}
+    for arg in sys.argv[1:]:
+        if arg.startswith('--') and '=' in arg:
+            key, value = arg[2:].split('=', 1)
+            args[key] = value
+        elif arg.startswith('--'):
+            args[arg[2:]] = True
+        elif SECTION in POSITIONAL and POSITIONAL[SECTION] not in args:
+            args[POSITIONAL[SECTION]] = arg
+        elif SECTION in SECOND:
+            args[SECOND[SECTION]] = arg
+    return args
+
+
+def cell(value):
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    return '' if value is None else str(value)
+
+
+def print_table(rows):
+    columns = list(dict.fromkeys(key for row in rows for key in row))
+    widths = {c: min(max(len(c), *(len(cell(r.get(c))) for r in rows)), 60) for c in columns}
+    print('  '.join(c.ljust(widths[c]) for c in columns))
+    for row in rows:
+        print('  '.join(cell(row.get(c))[:60].ljust(widths[c]) for c in columns))
+
+
+def lerd_api(path, data=None):
+    request = urllib.request.Request(os.environ['LERD_API_URL'] + path, data=data,
+                                     headers={'Content-Type': 'application/json',
+                                              'X-Lerd-Plugin-Token': os.environ['LERD_API_TOKEN']})
+    with urllib.request.urlopen(request) as response:
+        return response.read().decode()
+
+
+def main():
+    if SECTION == 'editor':
+        # The editor picked in lerd's settings; empty when none is, and then nothing offers to open code.
+        print(json.dumps({'editor': json.loads(lerd_api('/api/editors')).get('global') or ''}))
+        return
+    path = os.environ.get('LERD_SITE_PATH')
+    if not path:
+        sys.exit('No site: run this inside a linked Laravel project, or pass the site.')
+    # A site that is not a Laravel app (a JS app, a static site, a package) is an answer, not a failure:
+    # exiting 0 keeps lerd from reporting the plugin as broken every time its tab opens there.
+    if not (os.path.isfile(os.path.join(path, 'artisan')) and os.path.isfile(os.path.join(path, 'vendor', 'autoload.php'))):
+        reason = 'not a Laravel app' if not os.path.isfile(os.path.join(path, 'artisan')) else 'composer install has not run'
+        if SURFACE == 'api':
+            print(json.dumps({'not_laravel': True, 'reason': reason}))
+        else:
+            print(f'{os.environ.get("LERD_SITE", path)} is {reason}, so there is nothing to inspect.')
+        return
+    args = read_args()
+    as_json = args.pop('json', False)
+    if SECTION == 'batch':
+        print(json.dumps(run_batch(path, args.get('paths') or [])))
+        return
+    output = run_php(path, 'locate' if SECTION == 'open' else SECTION, args)
+
+    if SECTION == 'open':
+        # lerd opens the file in the editor the user picked in its settings.
+        print(lerd_api('/api/open-editor', output.encode()))
+        return
+
+    if SURFACE != 'cli' or as_json:
+        print(output, end='')
+        return
+    data = json.loads(output)
+    if isinstance(data, dict):
+        data = next((data[k] for k in ('rows', 'entries') if isinstance(data.get(k), list)), data)
+    if isinstance(data, list) and data and all(isinstance(r, dict) for r in data):
+        print_table(data)
+    elif isinstance(data, list):
+        print('Nothing found.')
+    else:
+        print(json.dumps(data, indent=2))
+
+
+main()

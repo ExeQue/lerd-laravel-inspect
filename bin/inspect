@@ -48,6 +48,7 @@ def project_settings(path):
     #   laravel_inspect:
     #     disks: [local, public, s3]
     #     cache_stores: [redis]
+    #     connections: [mysql, legacy]
     # ponytail: needs PyYAML; without it the settings are ignored and everything shows.
     try:
         import yaml
@@ -66,7 +67,7 @@ def project_settings(path):
 def with_settings(path, section, args):
     if section in ('overview', 'cache', 'queues'):
         settings = project_settings(path)
-        args = {**args, **{k: settings[k] for k in ('disks', 'cache_stores', 'queues') if isinstance(settings.get(k), list)}}
+        args = {**args, **{k: settings[k] for k in ('disks', 'cache_stores', 'queues', 'connections') if isinstance(settings.get(k), list)}}
     return args
 
 

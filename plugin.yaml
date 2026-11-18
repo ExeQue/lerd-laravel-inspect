@@ -15,7 +15,7 @@ commands:
   - {name: db-tables, usage: "[filter] [--counts] Database tables", run: bin/db-tables}
   - {name: db-table, usage: "<table> Columns, indexes and foreign keys of a table", run: bin/db-table}
   - {name: migrations, usage: "Ran and pending migrations", run: bin/migrations}
-  - {name: schedule, usage: "Scheduled tasks with next run time", run: bin/schedule}
+  - {name: schedule, usage: "[--vendor] Scheduled tasks with next run time", run: bin/schedule}
   - {name: events, usage: "[filter] [--vendor] Events and their listeners", run: bin/events}
   - {name: listeners, usage: "[filter] [--vendor] Listeners with their events and queue", run: bin/listeners}
   - {name: views, usage: "[filter] [--vendor] Blade views by name, with their file", run: bin/views}
@@ -24,7 +24,7 @@ commands:
   - {name: policies, usage: "[filter] [--vendor] Model policies with their abilities, and gates", run: bin/policies}
   - {name: bindings, usage: "[filter] [--vendor] What the container resolves each abstract to", run: bin/bindings}
   - {name: queues, usage: "[filter] Jobs waiting on the queues the app uses", run: bin/queues}
-  - {name: channels, usage: "[filter] Broadcast channels and what authorizes them", run: bin/channels}
+  - {name: channels, usage: "[filter] [--vendor] Broadcast channels and what authorizes them", run: bin/channels}
   - {name: middleware, usage: "[filter] [--vendor] Global middleware, groups and aliases", run: bin/middleware}
   - {name: failed-jobs, usage: "[limit] Failed queue jobs", run: bin/failed-jobs}
   - {name: storage-list, usage: "<disk> [path] One folder of a storage disk", run: bin/storage-list}
@@ -36,7 +36,7 @@ mcp:
   skill: SKILL.md
   tools:
     - name: overview
-      description: "Laravel and PHP versions, environment, cache/queue/session drivers, installed ecosystem packages, storage disks and cache stores (without credentials; shown marks the ones the project picked in .lerd.yaml, or the defaults), and counts of routes, models, pending migrations, failed jobs and scheduled tasks."
+      description: "Laravel and PHP versions, environment, cache/queue/session drivers, installed ecosystem packages, storage disks, cache stores and database connections (without credentials; shown marks the ones the project picked in .lerd.yaml, or the defaults and, for connections, those a model uses), and counts of routes, models, pending migrations, failed jobs and scheduled tasks."
       input_schema: {type: object, required: [site], properties: {site: {type: string, description: Site name}}}
       run: bin/overview
     - name: routes
@@ -48,7 +48,7 @@ mcp:
       input_schema: {type: object, required: [site], properties: {site: {type: string}, name: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, counts: {type: boolean, description: Add row counts to the list}, vendor: {type: boolean, description: Include models from vendor packages}, references: {type: boolean, description: "With name: add referenced_by, the relations on other models that point at this one"}}}
       run: bin/models
     - name: db-tables
-      description: "Tables of the app's database with size, optionally row counts (estimates from the database's statistics on MySQL and PostgreSQL; db-table gives an exact count)."
+      description: "Tables of the app's database (connection: a name from overview's connections, the default when left out) with size, optionally row counts (estimates from the database's statistics on MySQL and PostgreSQL; db-table gives an exact count)."
       input_schema: {type: object, required: [site], properties: {site: {type: string}, connection: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, counts: {type: boolean}}}
       run: bin/db-tables
     - name: db-table
@@ -60,8 +60,8 @@ mcp:
       input_schema: {type: object, required: [site], properties: {site: {type: string}, connection: {type: string}}}
       run: bin/migrations
     - name: schedule
-      description: "Scheduled tasks with cron expression, next run time and overlap/one-server/background flags."
-      input_schema: {type: object, required: [site], properties: {site: {type: string}}}
+      description: "Scheduled tasks with cron expression, next run time, overlap/one-server/background flags and target, the command class, job class or closure each runs. Without vendor, leaves out closures a package schedules; a command or job counts as the app's."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, vendor: {type: boolean, description: Include closures packages schedule}}}
       run: bin/schedule
     - name: events
       description: "Registered events and their listeners, including discovered ones. Without vendor only the app's listeners, and events that are the app's or have one. Filter matches event or listener names."
@@ -112,8 +112,8 @@ mcp:
       input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}}}
       run: bin/queues
     - name: channels
-      description: "The broadcast channels the app authorizes, such as user.{id}, with the closure or channel class that decides."
-      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}}}
+      description: "The broadcast channels the app authorizes, such as user.{id}, with the closure or channel class that decides. Without vendor only the app's own."
+      input_schema: {type: object, required: [site], properties: {site: {type: string}, filter: {type: string, description: "Ignores case; terms separated by | match any"}, vendor: {type: boolean, description: Include channels packages register}}}
       run: bin/channels
     - name: middleware
       description: "The HTTP middleware: the global stack, each group (web, api) with what it runs, and the aliases routes use (auth, throttle) with their classes. Vendor aliases only with vendor."

@@ -14,16 +14,16 @@ Its sections sit in a sidebar, grouped, each with its count:
 - **HTTP**
   - **Routes**: method, URI, name, action and middleware.
   - **Middleware**: the global stack, the groups (pick one under **Group**) and the aliases, filterable by kind.
-  - **Policies**: each model's policy with its abilities, and the gates.
   - **Channels**: broadcast channels and what authorizes them.
 - **Data**
   - **Models**: every Eloquent model under `app/`. Click one for its attributes, relations, observers and row count; click a relation, or a model under **Referenced by**, to go to it; **Table** opens its table.
-  - **Database**: tables with their model, size and estimated rows. Click one for columns, indexes, foreign keys and the exact row count; **Model** goes to its model.
+  - **Database**: tables with their model, size and estimated rows. Click one for columns, indexes, foreign keys and the exact row count; **Model** goes to its model. When more than one connection shows, pick one above the tables; the default connection and those a model uses show, unless the project lists its own.
   - **Migrations**: pending first, then the newest, each with buttons to copy its name and open its file.
 - **Code**
   - **Views**: every Blade view by the name `view()` takes, `namespace::name` for namespaced ones, with its file. Under **App**, a package view shows only where the app overrides it in `resources/views/vendor`.
   - **Commands**: every Artisan command with its usage, description and class.
   - **Events** and **Listeners**: each event with its listeners, and each listener with its events and whether it is queued.
+  - **Policies**: each model's policy with its abilities in alphabetical order, and the gates.
   - **Bindings**: what the container resolves each bound interface or key to, and whether it is a singleton.
   - **Schedule**: tasks with cron, next run, flags, and a button to open the command, job or closure each runs.
   - **Config**: the resolved config as a tree: each file, then each part of the key, folds open; a filter opens what matches. Leaves copy their whole key. Credentials show as dots.
@@ -37,7 +37,7 @@ The tab loads every section at once when it opens, so moving between them is ins
 
 The filter takes several terms separated by `|`, matching any of them, such as `Order|Invoice`; so do the `filter` arguments of the CLI and MCP tools.
 
-Routes, Middleware, Models, Policies, Views, Commands, Bindings, Events and Listeners have **App**, **Vendor** and **All**, each with its count, chosen per section: the app's own rows, the packages' rows, or both with the app's first. Under **Vendor** and **All**, a **source** column at the end says which composer package each row comes from, or **app** for the app's own. The sidebar's count is always the app's own.
+Routes, Middleware, Channels, Models, Policies, Views, Commands, Bindings, Events, Listeners and Schedule have **App**, **Vendor** and **All**, each with its count, chosen per section: the app's own rows, the packages' rows, or both with the app's first. Under **Vendor** and **All**, a **source** column at the end says which composer package each row comes from, or **app** for the app's own. The sidebar's count is always the app's own. A scheduled task does not record who scheduled it, so only a closure a package schedules counts as the package's; a command or job, such as `model:prune`, counts as the app's even when its class is a package's.
 
 Class names show their short name, and the full one on hover. Beside each is a button that copies it (a closure copies as `path:line`), and for the app's own code, when an editor is picked in lerd's settings, one that opens it there.
 
@@ -51,17 +51,17 @@ Run inside a linked project. Add `--json` for raw JSON.
 - `lerd laravel-inspect:routes [filter] [--vendor]`
 - `lerd laravel-inspect:middleware [filter] [--vendor]`
 - `lerd laravel-inspect:policies [filter] [--vendor]`
-- `lerd laravel-inspect:channels [filter]`
+- `lerd laravel-inspect:channels [filter] [--vendor]`
 - `lerd laravel-inspect:models [Model] [--counts] [--vendor] [--references]`
-- `lerd laravel-inspect:db-tables [filter] [--counts]`
-- `lerd laravel-inspect:db-table <table>`
-- `lerd laravel-inspect:migrations`
+- `lerd laravel-inspect:db-tables [filter] [--counts] [--connection=name]`
+- `lerd laravel-inspect:db-table <table> [--connection=name]`
+- `lerd laravel-inspect:migrations [--connection=name]`
 - `lerd laravel-inspect:views [filter] [--vendor]`
 - `lerd laravel-inspect:commands [filter] [--vendor]`
 - `lerd laravel-inspect:events [filter] [--vendor]`
 - `lerd laravel-inspect:listeners [filter] [--vendor]`
 - `lerd laravel-inspect:bindings [filter] [--vendor]`
-- `lerd laravel-inspect:schedule`
+- `lerd laravel-inspect:schedule [--vendor]`
 - `lerd laravel-inspect:config [filter] [--key=mail]`
 - `lerd laravel-inspect:queues [filter]`
 - `lerd laravel-inspect:failed-jobs [limit]`
@@ -80,7 +80,7 @@ Deleting files and clearing caches are deliberately not tools: they stay buttons
 
 ## Credentials
 
-The config is shown with credentials masked: a key whose last part ends in `key`, `secret`, `password`, `token`, `dsn` and the like, a password in a URL such as `redis://user:pass@host`, in a query string or in a DSN, and any value equal to a secret environment variable, such as one the project's `env_provider` supplies. It is a pattern match, so a secret under an unusual name in an unusual form can still show. Disks and cache stores show only where data goes (driver, root, bucket, connection), never their keys. `php/selftest.php` checks this; run it from a Laravel app's folder with `lerd php ~/.local/share/lerd/plugins/laravel-inspect/php/selftest.php`.
+The config is shown with credentials masked: a key whose last part ends in `key`, `secret`, `password`, `token`, `dsn` and the like, a password in a URL such as `redis://user:pass@host`, in a query string or in a DSN, and any value equal to a secret environment variable, such as one the project's `env_provider` supplies. It is a pattern match, so a secret under an unusual name in an unusual form can still show. Disks and cache stores show only where data goes (driver, root, bucket, connection), never their keys; database connections only their driver, database, host and port, never their URL, username or password. `php/selftest.php` checks this; run it from a Laravel app's folder with `lerd php ~/.local/share/lerd/plugins/laravel-inspect/php/selftest.php`.
 
 ## Speed
 
@@ -97,13 +97,14 @@ When the tab opens, the overview loads on its own and every other section comes 
 
 It needs `python3` on the host.
 
-A fresh Laravel app configures many disks, cache stores and queue connections as examples, so the tab shows only the defaults and what the app uses, unless the project picks its own in `.lerd.yaml` (or a personal `.lerd.local.yaml`, which wins):
+A fresh Laravel app configures many disks, cache stores, database connections and queue connections as examples, so the tab shows only the defaults and what the app uses (for database connections, also those a model uses), unless the project picks its own in `.lerd.yaml` (or a personal `.lerd.local.yaml`, which wins):
 
 ```yaml
 laravel_inspect:
   disks: [local, public, s3]
   cache_stores: [redis, file]
   queues: [health, redis:ingest]
+  connections: [mysql, legacy]
 ```
 
 Reading these needs PyYAML (`python3 -c "import yaml"`); without it they are ignored and only the defaults show.

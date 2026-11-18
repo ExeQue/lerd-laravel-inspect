@@ -12,11 +12,11 @@ From lerd's dashboard, **Plugins** › **Browse**, or:
 lerd plugin install https://github.com/ExeQue/lerd-laravel-inspect
 ```
 
-It needs lerd 1.40 or newer, `python3` on the host, and a Laravel 11+ app. The optional `laravel_inspect:` settings in `.lerd.yaml` are read with PyYAML; without it they are ignored and only the default disk, cache store and queues show.
+It needs lerd 1.40 or newer, `python3` on the host, and a Laravel 11+ app. The optional `laravel_inspect:` settings in `.lerd.yaml` are read with PyYAML; without it they are ignored and only the default disk, cache store, queues and database connections show.
 
 ## What it adds to lerd
 
-- **A site tab**, **Laravel**, on Laravel 11+ sites. Its sections sit in a grouped sidebar: Overview; HTTP (routes, middleware, policies, channels); Data (models, database, migrations); Code (views, commands, events, listeners, bindings, schedule, config); Runtime (queues, failed jobs, cache, storage). If a site's Laravel app cannot be inspected, such as before `composer install`, it says so.
+- **A site tab**, **Laravel**, on Laravel 11+ sites. Its sections sit in a grouped sidebar: Overview; HTTP (routes, middleware, channels); Data (models, database, migrations); Code (views, commands, events, listeners, policies, bindings, schedule, config); Runtime (queues, failed jobs, cache, storage). If a site's Laravel app cannot be inspected, such as before `composer install`, it says so.
 - **MCP tools** for AI assistants, `laravel-inspect_overview`, `_routes`, `_models` and the rest, all read-only, and a skill (`SKILL.md`) that tells an assistant which tool answers which question. lerd writes the skill with `lerd mcp:inject` or `lerd mcp:enable-global`.
 - **CLI commands**, `lerd laravel-inspect:routes` and the rest, run inside a linked project.
 - **API endpoints** under `/api/plugins/laravel-inspect/`, loopback only, which the tab uses.
@@ -38,10 +38,10 @@ Answers that only depend on code (routes, models, events, listeners, views, comm
 ## What it reads
 
 - The site's code and the state its booted app reports, through Laravel's own APIs (`artisan about`, `model:show`, the router, the container, the event dispatcher, the schedule, the migrator).
-- The app's resolved config, which includes values from its `.env` and its lerd `env_provider`. Credentials are masked before they leave the app: keys named like one (`key`, `secret`, `password`, `token`, `dsn` and the like), a password in a URL such as `redis://user:pass@host`, in a query string (`?token=`) or in a DSN (`password=`), and any value equal to a secret environment variable of six or more characters. It is a pattern match, so a secret under an unusual name in an unusual form can still show. Disks and cache stores show where data goes, never their keys. `php/selftest.php` checks this; run it from a Laravel app's folder with `lerd php ~/.local/share/lerd/plugins/laravel-inspect/php/selftest.php`.
+- The app's resolved config, which includes values from its `.env` and its lerd `env_provider`. Credentials are masked before they leave the app: keys named like one (`key`, `secret`, `password`, `token`, `dsn` and the like), a password in a URL such as `redis://user:pass@host`, in a query string (`?token=`) or in a DSN (`password=`), and any value equal to a secret environment variable of six or more characters. It is a pattern match, so a secret under an unusual name in an unusual form can still show. Disks and cache stores show where data goes, never their keys; database connections show their driver, database, host and port, never their URL, username or password. `php/selftest.php` checks this; run it from a Laravel app's folder with `lerd php ~/.local/share/lerd/plugins/laravel-inspect/php/selftest.php`.
 - Its database schema and row counts, its migrations table, failed jobs and queue sizes.
 - Files and folders on the app's storage disks, and cache keys, when browsed in the tab or asked for by a tool.
-- The project's `.lerd.yaml` and `.lerd.local.yaml`, for the optional `laravel_inspect:` settings (which disks, cache stores and queues to show).
+- The project's `.lerd.yaml` and `.lerd.local.yaml`, for the optional `laravel_inspect:` settings (which disks, cache stores, queues and database connections to show).
 - lerd's API, with the token lerd gives the plugin: which editor is set (`/api/editors`), and to open a file in it (`/api/open-editor`).
 
 ## What it changes

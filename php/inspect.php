@@ -179,9 +179,9 @@ function locate(string $target): array
  * The disks or cache stores an app configures, with only the keys that say where data goes:
  * a disk's key and secret, or any other credential, never leave the app.
  */
-function configured(string $key, string $defaultKey, ?array $chosen): array
+function configured(string $key, string $defaultKey, ?array $chosen,
+    array $safe = ['driver', 'root', 'bucket', 'region', 'endpoint', 'url', 'visibility', 'connection', 'lock_connection', 'table', 'path', 'prefix']): array
 {
-    $safe = ['driver', 'root', 'bucket', 'region', 'endpoint', 'url', 'visibility', 'connection', 'lock_connection', 'table', 'path', 'prefix'];
     $rows = [];
     foreach ((array) config($key, []) as $name => $settings) {
         // shown: the ones picked in .lerd.yaml, or the default alone, since a fresh app lists many examples.
@@ -199,12 +199,34 @@ function configured(string $key, string $defaultKey, ?array $chosen): array
     return $rows;
 }
 
+/**
+ * The database connections, with the driver and database only: a connection's url, username and
+ * password never leave the app. Unless the project picks its own, the default and those a model uses show.
+ */
+function connections(?array $chosen): array
+{
+    $rows = configured('database.connections', 'database.default', $chosen, ['driver', 'database', 'host', 'port']);
+    if ($chosen === null) {
+        $used = [];
+        foreach (modelClasses() as $class) {
+            try {
+                $used[] = (new $class())->getConnectionName();
+            } catch (Throwable) {
+                // A model that cannot be built without arguments keeps its connection to itself.
+            }
+        }
+        foreach ($rows as &$row) {
+            $row['shown'] = $row['default'] || in_array($row['name'], $used, true);
+        }
+    }
+
+    return $rows;
+}
+
 function overview(array $args): array
 {
     // Loading the console application runs what registers commands and their schedules, such as a
     // provider's callback once Artisan starts, so the count matches schedule:list.
-    Artisan::all();
-    $scheduled = count(app(Schedule::class)->events());
     Artisan::call('about', ['--json' => true]);
     $about = json_decode(Artisan::output(), true) ?: [];
     // about's JSON keys a link by its absolute path in lower case; read the links again, relative and as written.
@@ -234,13 +256,16 @@ function overview(array $args): array
         'about' => $about,
         'disks' => configured('filesystems.disks', 'filesystems.default', $args['disks'] ?? null),
         'cache_stores' => configured('cache.stores', 'cache.default', $args['cache_stores'] ?? null),
+        'connections' => connections($args['connections'] ?? null),
         'counts' => [
             // The app's own, as the Routes tab and the routes tool count them without vendor.
             'routes' => count(routes([])),
             'models' => count(modelClasses()),
             'pending_migrations' => count($pending),
             'failed_jobs' => $failed,
-            'scheduled_tasks' => $scheduled,
+            // The app's own tasks, as the Schedule tab counts them; schedule() loads the console first,
+            // which runs what registers tasks, so the count matches schedule:list.
+            'scheduled_tasks' => count(schedule([])),
         ],
     ];
 }
@@ -511,9 +536,18 @@ function schedule(array $args): array
             ? ($event->description ?: 'Closure')
             : str_replace([ConsoleApplication::phpBinary() . ' ', ConsoleApplication::artisanBinary()], ['', 'artisan'], (string) $event->command);
         $command = trim($command, ' \'"');
+        $target = scheduleTarget($event, $command, $commands);
+        // A task does not record who scheduled it. A closure's file tells; a command or job, such as
+        // model:prune, is most often the app's own choice even when its class is a package's.
+        $source = $target !== null && str_starts_with($target, 'Closure at ')
+            ? sourceOf(listenerFile((new ReflectionProperty($event, 'callback'))->getValue($event)))
+            : null;
+        if ($source !== null && empty($args['vendor'])) {
+            continue;
+        }
         $rows[] = [
             'command' => $command,
-            'target' => scheduleTarget($event, $command, $commands),
+            'target' => $target,
             'expression' => $event->expression,
             'next_run' => $event->nextRunDate()->format(DATE_ATOM),
             'timezone' => (string) ($event->timezone ?? config('app.timezone')),
@@ -521,8 +555,11 @@ function schedule(array $args): array
             'without_overlapping' => $event->withoutOverlapping,
             'on_one_server' => $event->onOneServer,
             'in_background' => $event->runInBackground,
+            'source' => $source,
         ];
     }
+    // The app's first; usort keeps the schedule's order within each.
+    usort($rows, fn ($a, $b) => ($a['source'] !== null) <=> ($b['source'] !== null));
 
     return $rows;
 }
@@ -1156,6 +1193,7 @@ function policies(array $args): array
             // Abilities the app writes, on the policy or a base policy of its own, not those a vendor trait adds.
             fn ($m) => ! $m->isStatic() && ! str_starts_with($m->getName(), '__') && ! fromVendor($m->getFileName())
         ));
+        sort($methods, SORT_NATURAL | SORT_FLAG_CASE);
         $rows[] = ['kind' => 'policy', 'model' => $model, 'policy' => get_class($policy), 'abilities' => implode(', ', $methods),
             'source' => sourceOf(classFile($policy))];
     }
@@ -1275,11 +1313,13 @@ function channels(array $args): array
     }
     $rows = [];
     foreach ($broadcaster->getChannels() as $channel => $callback) {
-        $row = ['channel' => $channel, 'authorized_by' => is_string($callback) ? $callback : listenerName($callback)];
-        if (matches(implode(' ', $row), $args['filter'] ?? null)) {
+        $row = ['channel' => $channel, 'authorized_by' => is_string($callback) ? $callback : listenerName($callback),
+            'source' => sourceOf(is_string($callback) ? classFile($callback) : listenerFile($callback))];
+        if ((! empty($args['vendor']) || $row['source'] === null) && matches(implode(' ', array_filter($row, 'is_string')), $args['filter'] ?? null)) {
             $rows[] = $row;
         }
     }
+    usort($rows, fn ($a, $b) => ($a['source'] !== null) <=> ($b['source'] !== null));
 
     return $rows;
 }

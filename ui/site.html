@@ -95,6 +95,9 @@
     .code .icon { flex: none; height: 18px; min-width: 0; padding: 0 3px; opacity: 0.6; }
     .code .icon svg { flex: none; width: 12px; height: 12px; }
     .code .icon:hover { opacity: 1; }
+    .abilities { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; white-space: normal; }
+    .ability { padding: 1px 2px 1px 6px; border: 1px solid var(--lerd-line); border-radius: 4px; background: var(--lerd-surface-hover); }
+    .ability .icon { border: 0; background: none; }
     .pills { display: inline-flex; gap: 4px; white-space: nowrap; }
     dialog.file { width: min(900px, calc(100vw - 32px)); }
     dialog.file .where { font-size: 11px; overflow-wrap: anywhere; margin-bottom: 8px; }
@@ -163,6 +166,9 @@
     const FILTER_HINT = 'Filter, a|b for either';
     // The overview's data once it has loaded: the app's namespaces and its disks with their drivers.
     let overview = null;
+    // The connection picked in Database, null for the default.
+    let dbConnection = null;
+    const defaultConnection = () => overview?.connections?.find((c) => c.default)?.name;
     // The branches of the config tree that are open, kept while the tab is; #config/<file> opens that file.
     const configOpen = new Set();
     // Which kind of middleware the Middleware tab shows: all, global, group or alias.
@@ -203,7 +209,7 @@
       storage: () => 'overview',
       cache: () => 'cache',
       migrations: () => 'migrations',
-      schedule: () => 'schedule',
+      schedule: (own) => 'schedule?' + (own ? '' : vendorParam('schedule')),
       events: (own) => 'events?' + (own ? '' : vendorParam('events')),
       listeners: (own) => 'listeners?' + (own ? '' : vendorParam('listeners')),
       views: (own) => 'views?' + (own ? '' : vendorParam('views')),
@@ -213,7 +219,7 @@
       policies: (own) => 'policies?' + (own ? '' : vendorParam('policies')),
       config: () => 'config',
       queues: () => 'queues',
-      channels: () => 'channels',
+      channels: (own) => 'channels?' + (own ? '' : vendorParam('channels')),
       'failed-jobs': () => 'failed-jobs'
     };
 
@@ -488,7 +494,7 @@
     const label = (textContent) => el('span', { className: 'lerd-label', textContent });
 
     const chosenNote = (what) => el('p', { className: 'lerd-muted' }, 'Shows the default unless the project lists its ' + what + ' under ',
-      el('code', { textContent: 'laravel_inspect: {disks: [...], cache_stores: [...]}' }), ' in .lerd.yaml or .lerd.local.yaml.');
+      el('code', { textContent: 'laravel_inspect: {disks: [...], cache_stores: [...], connections: [...]}' }), ' in .lerd.yaml or .lerd.local.yaml.');
 
     // Asks before anything that cannot be undone, in a dialog that looks like lerd's own.
     function confirmAction(title, message, action) {
@@ -839,9 +845,12 @@
       },
       policies(rows) {
         const of = (kind) => sourced('policies', filtered(rows).filter((row) => row.kind === kind).map(({ kind: _, ...row }) => row));
+        // Each ability as code with its own copy button, ready for can('…') or @can('…').
+        const ability = (name) => el('span', { className: 'code ability' }, el('code', { textContent: name }), copyButton(name));
+        const abilities = (list) => (list ? el('span', { className: 'abilities' }, ...list.split(', ').map(ability)) : null);
         render = () => view.replaceChildren(
-          label('Policies'), table(of('policy').map((row) => ({ ...row, abilities: row.abilities || null }))),
-          label('Gates'), table(of('gate')));
+          label('Policies'), table(of('policy').map((row) => ({ ...row, abilities: abilities(row.abilities) }))),
+          label('Gates'), table(of('gate').map((row) => ({ ...row, ability: ability(row.ability) }))));
       },
       config(rows) {
         // Config values as PHP has them: true and false as words; null and an empty string as words in grey.
@@ -931,16 +940,37 @@
         const command = (row) => el('span', { className: 'code' },
           el('span', { className: 'words', textContent: row.command.replace(/-/g, '\u2011') }), copyButton(row.command),
           editor && row.target && ownCode(row.target) ? openButton(row.target, row.command) : '');
-        render = () => view.replaceChildren(table(filtered(rows).map(({ command: text, target, ...rest }) => ({ command: command({ command: text, target }), ...rest }))));
+        render = () => view.replaceChildren(table(sourced('schedule', filtered(rows)).map(({ command: text, target, ...rest }) => ({ command: command({ command: text, target }), ...rest }))));
       },
       async 'db-tables'(rows) {
+        // rows are the default connection's tables, which the sidebar counts; another connection loads here,
+        // so a failing one keeps the bar to pick another.
+        const connection = dbConnection ?? defaultConnection();
+        const shown = (overview?.connections || []).filter((c) => c.shown);
+        const bar = shown.length > 1 ? el('div', { className: 'lerd-toolbar' }, el('span', { className: 'seg' }, ...shown.map((c) => {
+          const button = el('button', { textContent: c.name, title: [c.driver, c.database].filter(Boolean).join(' · ') });
+          button.setAttribute('aria-pressed', String(c.name === connection));
+          button.onclick = () => { dbConnection = c.default ? null : c.name; show('db-tables'); };
+          return button;
+        }))) : '';
+        if (dbConnection) {
+          const path = 'db-tables?counts=1&connection=' + encodeURIComponent(dbConnection);
+          if (!cache.has(path)) view.replaceChildren(bar, skeletonFor('db-tables'));
+          rows = await get(path).catch((err) => err);
+          if (current !== 'db-tables') return;
+          if (rows instanceof Error) {
+            const message = rows.message;
+            render = () => view.replaceChildren(bar, el('div', { className: 'lerd-empty', textContent: message }));
+            return;
+          }
+        }
         // Each table with the app's model on it, when it has one.
         const models = await get(paths.models(true)).catch(() => []);
-        const byTable = Object.fromEntries(models.map((row) => [row.table, row.class]));
+        const byTable = Object.fromEntries(models.filter((row) => row.connection === connection).map((row) => [row.table, row.class]));
         rows = rows.map((row) => ({ name: row.name, model: byTable[row.name] ?? null, ...row }));
         const tables = el('div');
-        view.replaceChildren(tables, el('p', { className: 'lerd-muted note', textContent: 'Rows are estimates from the database\'s statistics; a table\'s own page counts them exactly.' }));
-        render = () => tables.replaceChildren(table(filtered(rows), (row) => dbTable(row.name)));
+        view.replaceChildren(bar, tables, el('p', { className: 'lerd-muted note', textContent: 'Rows are estimates from the database\'s statistics; a table\'s own page counts them exactly.' }));
+        render = () => tables.replaceChildren(table(filtered(rows), (row) => dbTable(row.name, connection)));
       }
     };
 
@@ -949,7 +979,9 @@
     // ponytail: A -> B -> A reads as a step back; a counter in history.state if that label matters.
     const stack = [location.hash.slice(1) || 'overview'];
     const model = (name) => go('model/' + encodeURIComponent(name));
-    const dbTable = (name) => go('table/' + encodeURIComponent(name));
+    // A table on another connection than the default carries it: #table/<name>/<connection>.
+    const dbTable = (name, connection) => go('table/' + encodeURIComponent(name)
+      + (connection && connection !== defaultConnection() ? '/' + encodeURIComponent(connection) : ''));
 
     function go(hash) {
       if (location.hash.slice(1) === hash) route();
@@ -970,7 +1002,7 @@
         show('config');
       } else if (kind === 'storage' && rest.length) showStorage(decodeURIComponent(rest[0]), decodeURIComponent(rest.slice(1).join('/')));
       else if (kind === 'model') showModel(name);
-      else if (kind === 'table') showTable(name);
+      else if (kind === 'table') showTable(decodeURIComponent(rest[0]), rest[1] ? decodeURIComponent(rest[1]) : null);
       else show(tabs[hash] ? hash : 'overview');
     }
 
@@ -984,13 +1016,13 @@
     function title(hash) {
       const [kind, ...rest] = hash.split('/');
       const name = decodeURIComponent(rest.join('/'));
-      return kind === 'model' ? name.split('\\').pop() : kind === 'table' || kind === 'config' ? name : tabs[hash] || 'Back';
+      return kind === 'model' ? name.split('\\').pop() : kind === 'table' ? decodeURIComponent(rest[0]) : kind === 'config' ? name : tabs[hash] || 'Back';
     }
 
     // The app's models on a table, from the Models tab's data.
-    async function modelsOn(tableName) {
+    async function modelsOn(tableName, connection) {
       const rows = await get(paths.models(true)).catch(() => []);
-      return rows.filter((row) => row.table === tableName).map((row) => row.class);
+      return rows.filter((row) => row.table === tableName && row.connection === connection).map((row) => row.class);
     }
 
     function jump(label, onClick) {
@@ -1018,7 +1050,7 @@
         });
       render = () => view.replaceChildren(
         el('div', { className: 'head' }, back(), el('h2', { className: 'lerd-mono' }, codeLink(data.class)),
-          jump('Table ' + data.table, () => dbTable(data.table)), pill(data.count + ' rows', 'accent'), data.policy ? pill('policy ' + data.policy.split('\\').pop()) : ''),
+          jump('Table ' + data.table, () => dbTable(data.table, data.database)), pill(data.count + ' rows', 'accent'), data.policy ? pill('policy ' + data.policy.split('\\').pop()) : ''),
         label('Attributes'), table(filtered(flagged(data.attributes, ['increments', 'unique', 'fillable', 'hidden', 'appended']))),
         label('Relations'), table(data.relations, (row) => model(row.related)),
         label('Referenced by'), references,
@@ -1026,12 +1058,15 @@
       render();
     }
 
-    async function showTable(name) {
-      if (!cache.has('db-table?name=' + encodeURIComponent(name))) view.replaceChildren(skeletonDetail());
-      const data = await load('db-table?name=' + encodeURIComponent(name));
-      const models = await modelsOn(data.table);
+    async function showTable(name, connection) {
+      const path = 'db-table?name=' + encodeURIComponent(name) + (connection ? '&connection=' + encodeURIComponent(connection) : '');
+      if (!cache.has(path)) view.replaceChildren(skeletonDetail());
+      const data = await load(path);
+      if (!overview) overview = await get(paths.overview()).catch(() => null);
+      const models = await modelsOn(data.table, connection ?? defaultConnection());
       render = () => view.replaceChildren(
         el('div', { className: 'head' }, back(), el('h2', { className: 'lerd-mono', textContent: data.table }), pill(data.rows + ' rows', 'accent'),
+          connection ? pill(connection) : '',
           ...models.map((cls) => jump('Model ' + cls.split('\\').pop(), () => model(cls)))),
         // nullable beside the type, where it sits on a model's attributes too.
         label('Columns'), table(filtered(flagged(data.columns.map(({ name, type_name, type, nullable, ...rest }) => ({ name, type_name, type, nullable, ...rest })), ['auto_increment']))),
@@ -1050,7 +1085,7 @@
     // "Include 15 vendor": how many rows the toggle adds, from the tab's list with and without vendor.
     // App, Vendor and All for the tabs that have vendor rows. Vendor is All without the app's rows, so
     // both fetch the list with vendor; the counts come from that list and the app's own.
-    const SCOPED = ['routes', 'middleware', 'models', 'policies', 'views', 'commands', 'bindings', 'events', 'listeners'];
+    const SCOPED = ['routes', 'middleware', 'models', 'policies', 'channels', 'views', 'commands', 'bindings', 'events', 'listeners', 'schedule'];
     const scope = {};
 
     async function scopeButtons(name) {
@@ -1124,9 +1159,9 @@
     // The sidebar's groups, and the same as a select for a narrow frame.
     const GROUPS = [
       ['', ['overview']],
-      ['HTTP', ['routes', 'middleware', 'policies', 'channels']],
+      ['HTTP', ['routes', 'middleware', 'channels']],
       ['Data', ['models', 'db-tables', 'migrations']],
-      ['Code', ['views', 'commands', 'events', 'listeners', 'bindings', 'schedule', 'config']],
+      ['Code', ['views', 'commands', 'events', 'listeners', 'policies', 'bindings', 'schedule', 'config']],
       ['Runtime', ['queues', 'failed-jobs', 'cache', 'storage']]
     ];
     const sectionSelect = document.getElementById('section-select');

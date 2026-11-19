@@ -12,7 +12,7 @@ From lerd's dashboard, **Plugins** › **Browse**, or:
 lerd plugin install https://github.com/ExeQue/lerd-laravel-inspect
 ```
 
-It needs lerd 1.40 or newer, `python3` on the host, and a Laravel 11+ app. The optional `laravel_inspect:` settings in `.lerd.yaml` are read with PyYAML; without it they are ignored and only the default disk, cache store, queues and database connections show.
+It needs lerd 1.39.1 or newer, `python3` on the host, and a Laravel 11+ app. The optional `laravel_inspect:` settings in `.lerd.yaml` are read with PyYAML; without it they are ignored and only the default disk, cache store, queues and database connections show.
 
 ## What it adds to lerd
 

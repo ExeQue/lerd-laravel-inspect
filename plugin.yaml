@@ -1,6 +1,6 @@
 api_version: 1
 name: laravel-inspect
-lerd: ">=1.40"
+lerd: ">=1.39.1"
 version: 0.1.0
 description: See inside a Laravel app - routes, middleware, models, policies, views, commands, config, bindings, queues, events, storage and cache - on its own tab and for AI agents
 docs: DOCS.md

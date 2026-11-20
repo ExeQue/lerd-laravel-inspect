@@ -291,7 +291,7 @@ function routes(array $args): array
             'action' => $route->getAction('uses') instanceof Closure
                 ? listenerName($route->getAction('uses'))
                 : ltrim($route->getActionName(), '\\'),
-            'middleware' => implode(', ', $route->gatherMiddleware()),
+            'middleware' => implode(', ', array_map('listenerName', $route->gatherMiddleware())),
             'domain' => $route->getDomain(),
         ];
         if (matches(implode(' ', $row), $args['filter'] ?? null)) {

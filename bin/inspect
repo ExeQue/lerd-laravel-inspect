@@ -97,7 +97,8 @@ def write_index(index, stamp, output):
 
 def php(path, section, args):
     script = os.path.join(os.environ['LERD_PLUGIN_DIR'], 'php', 'inspect.php')
-    result = subprocess.run([os.environ['LERD_BIN'], 'php', script, section, json.dumps(args)],
+    # PHP diagnostics during app bootstrap must not corrupt the JSON on stdout.
+    result = subprocess.run([os.environ['LERD_BIN'], 'php', '-d', 'display_errors=stderr', script, section, json.dumps(args)],
                             cwd=path, capture_output=True, text=True)
     if result.returncode != 0:
         sys.exit(result.stderr.strip() or result.stdout.strip() or 'inspect failed')
